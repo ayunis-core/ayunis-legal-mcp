@@ -1,0 +1,360 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	Document Type Definition
+	Diese DTD definiert den Aufbau des XML-Formats zur Veroeffentlichung der aktuellen Bundesgesetze 
+	und Rechtsverordnungen ueber www.gesetze-im-internet.de
+
+	Erstellt von:	juris GmbH
+	Im Auftrag des Bundesministeriums der Justiz
+	
+	Version:		1.01
+	Erzeugt am:	25.06.2012 
+	Datei:			GiI-Norm.dtd
+
+-->
+
+
+<!ELEMENT dokumente (norm*)>
+<!ATTLIST dokumente
+	builddate CDATA #IMPLIED
+	doknr CDATA #IMPLIED
+>
+
+<!ELEMENT norm (metadaten, textdaten?)>
+<!ATTLIST norm
+	builddate CDATA #IMPLIED
+	doknr CDATA #IMPLIED
+>
+
+<!ELEMENT metadaten (jurabk+, amtabk?, ausfertigung-datum?, fundstelle*, kurzue?, langue?, gliederungseinheit?, enbez?, titel?, standangabe*)>
+
+<!ELEMENT textdaten (text?, fussnoten?)>
+
+<!ENTITY % bgbltitlestruct "#PCDATA | BR | B | I | U | F | SP | small | SUP | SUB | FnR | NB | noindex">
+<!ENTITY % bgbltextstruct "%bgbltitlestruct; | Citation | FnArea | table | DL |  Split | IMG | FILE | Revision | pre | kommentar | QuoteL | QuoteR | ABWFORMAT">
+<!ENTITY % bgbltblstruct  "%bgbltitlestruct; | Citation | FnArea | table | DL |  Split | IMG | FILE | Ident | Title | P | FNA | Accolade | QuoteL | QuoteR | kommentar | ABWFORMAT">
+
+<!ENTITY % Text "CDATA">
+<!ENTITY % LanguageCode "NMTOKEN">
+<!ENTITY % i18n
+	"xml:lang	%LanguageCode;	#IMPLIED"
+>
+<!ENTITY % coreattrs
+	"ID		ID			#IMPLIED
+	Class		CDATA		#IMPLIED"
+	
+>
+<!ENTITY % attrs "%coreattrs; %i18n;">
+<!ENTITY % yesorno "CDATA">
+<!NOTATION Satz-3B2 SYSTEM "3B2">
+<!ENTITY % commonatts "Id		CDATA		#IMPLIED
+		Lang		CDATA		#IMPLIED
+		Remap		CDATA		#IMPLIED
+		Role		CDATA		#IMPLIED
+		XRefLabel	CDATA		#IMPLIED"
+>
+
+<!ELEMENT BR EMPTY>
+<!ELEMENT B (%bgbltextstruct;)*>
+<!ELEMENT I (%bgbltextstruct;)*>
+<!ELEMENT U (%bgbltextstruct;)*>
+<!ELEMENT F (#PCDATA)>
+<!ATTLIST F
+	Type CDATA #IMPLIED
+	Size CDATA #IMPLIED
+	Value CDATA #IMPLIED
+>
+<!ELEMENT SP (%bgbltextstruct;)*>
+<!ELEMENT small (%bgbltextstruct;)*>
+<!ELEMENT SUP (#PCDATA)>
+<!ATTLIST SUP
+	class ( Rec ) #IMPLIED
+>
+<!ELEMENT SUB (#PCDATA)>
+<!ELEMENT FNA (#PCDATA)>
+<!ELEMENT FnR EMPTY>
+<!ATTLIST FnR
+	ID IDREF #REQUIRED
+>
+<!ELEMENT NB (#PCDATA)>
+<!ELEMENT noindex ANY>
+<!ELEMENT Citation (%bgbltextstruct;)*>
+<!ELEMENT FnArea (FnR)+>
+<!ATTLIST FnArea
+	Line (0 | 1) "1"
+	Size (normal | large | small) "normal"
+>
+<!ELEMENT table (Title?, tgroup+)>
+<!ATTLIST table
+	%commonatts; 
+	colsep %yesorno; #IMPLIED
+	frame (top | bottom | topbot | all | sides | none) #IMPLIED
+	label CDATA #IMPLIED
+	orient (port | land) #IMPLIED
+	pgwide %yesorno; #IMPLIED
+	rowsep %yesorno; #IMPLIED
+	shortentry %yesorno; #IMPLIED
+	tabstyle NMTOKEN #IMPLIED
+	tocentry %yesorno; "%yes;"
+	MarginT CDATA #IMPLIED
+	MarginB CDATA #IMPLIED
+	MarginL CDATA #IMPLIED
+	MarginR CDATA #IMPLIED
+	vj CDATA #IMPLIED
+	Break (Column | Page) #IMPLIED
+>
+<!ELEMENT tgroup (colspec*, spanspec*, thead?, tbody, tfoot?)>
+<!ATTLIST tgroup
+	%commonatts; 
+	align (left | right | center | justify | char)  "left"
+	indent CDATA #IMPLIED
+	tindent CDATA #IMPLIED
+	bindent CDATA #IMPLIED
+	char CDATA  ""
+	charoff CDATA  "50"
+	cols CDATA #REQUIRED
+	colsep %yesorno; #IMPLIED
+	rowsep %yesorno; #IMPLIED
+	tgroupstyle NMTOKEN #IMPLIED
+>
+<!ELEMENT colspec EMPTY>
+<!ATTLIST colspec
+	%commonatts; 
+	align (left | right | center | justify | char) #IMPLIED
+	indent CDATA #IMPLIED
+	tindent CDATA #IMPLIED
+	bindent CDATA #IMPLIED
+	char CDATA #IMPLIED
+	charoff CDATA #IMPLIED
+	colname NMTOKEN #IMPLIED
+	colnum CDATA #IMPLIED
+	colsep %yesorno; #IMPLIED
+	colwidth CDATA #IMPLIED
+	rowsep %yesorno; #IMPLIED 
+>
+<!ELEMENT spanspec EMPTY>
+<!ATTLIST spanspec
+	%commonatts; 
+	align (left | right | center | justify | char)  "center"
+	indent CDATA #IMPLIED
+	tindent CDATA #IMPLIED
+	bindent CDATA #IMPLIED
+	char CDATA #IMPLIED
+	charoff CDATA #IMPLIED
+	colsep %yesorno; #IMPLIED
+	nameend NMTOKEN #IMPLIED
+	namest NMTOKEN #IMPLIED
+	rowsep %yesorno; #IMPLIED
+	spanname NMTOKEN #IMPLIED 
+>
+<!ELEMENT thead (colspec*, row+)>
+<!ATTLIST thead
+	%commonatts; 
+	valign (top | middle | bottom)  "bottom"
+	Class CDATA #IMPLIED
+	Style CDATA #IMPLIED 
+>
+<!ELEMENT tfoot (colspec*, row+)>
+<!ATTLIST tfoot
+	%commonatts; 
+	valign (top | middle | bottom)  "top"
+>
+<!ELEMENT tbody (row+)>
+<!ATTLIST tbody
+	%commonatts; 
+	valign (top | middle | bottom)  "top"
+	Class CDATA #IMPLIED
+	Style CDATA #IMPLIED 
+>
+<!ELEMENT row (entry+)>
+<!ATTLIST row
+	%commonatts; 
+	rowsep %yesorno; #IMPLIED
+	valign (top | middle | bottom) #IMPLIED
+	Break (Column | Page) #IMPLIED 
+>
+
+<!ELEMENT entry (%bgbltblstruct;)*>
+<!ATTLIST entry
+	%commonatts; 
+	align (left | right | center | justify | char) #IMPLIED
+	char CDATA #IMPLIED
+	charoff CDATA #IMPLIED
+	colname NMTOKEN #IMPLIED
+	colsep %yesorno; #IMPLIED
+	morerows CDATA #IMPLIED
+	nameend NMTOKEN #IMPLIED
+	namest NMTOKEN #IMPLIED
+	rotate %yesorno; #IMPLIED
+	rowsep %yesorno; #IMPLIED
+	spanname NMTOKEN #IMPLIED
+	valign (top | middle | bottom)  #IMPLIED
+	diagonal (up | down | updown) #IMPLIED
+	VJ %yesorno;  "1"
+>
+
+<!ELEMENT DL (DT, DD)+>
+<!ATTLIST DL
+	%attrs;
+	Indent CDATA #IMPLIED
+	Font (normal | bold | italic | bold-italic | underlined) "normal"
+	Type (arabic | alpha | Alpha | a-alpha | a3-alpha | roman | Roman | Dash | Bullet | Symbol | None) "arabic"
+>
+<!ELEMENT DT (%bgbltextstruct;)*>
+<!ATTLIST DT
+	%attrs;
+>
+<!ELEMENT DD (LA|Revision)+>
+<!ATTLIST DD
+	%attrs;
+	Font (normal | bold | italic | bold-italic | underlined) "normal"
+>
+<!ELEMENT LA (%bgbltextstruct;)*>
+<!ATTLIST LA
+	%attrs;
+	Size (normal | small | tiny) "normal"
+	Value CDATA #IMPLIED
+>
+
+<!ELEMENT Split EMPTY>
+<!ATTLIST Split
+	Leader %yesorno; "0"
+>
+
+<!ELEMENT IMG EMPTY>
+<!ATTLIST IMG
+	%attrs;
+	SRC CDATA #REQUIRED
+	orient (port | land) #IMPLIED
+	Pos (block | inline) "block"
+	Align (left | center | right) "center"
+	Size CDATA #IMPLIED
+	Width CDATA #IMPLIED
+	Height CDATA #IMPLIED
+	Units CDATA #IMPLIED
+	Type CDATA #IMPLIED
+	alt	%Text;	#IMPLIED
+	title	%Text;	#IMPLIED
+>
+<!ELEMENT FILE EMPTY>
+<!ATTLIST FILE
+	%attrs;
+	SRC CDATA #REQUIRED
+	PREVIEW CDATA #IMPLIED
+	Type CDATA #IMPLIED
+	title %Text; #IMPLIED
+>
+
+<!ELEMENT Revision ((Ident? | Title? | Subtitle? | (TOC | Content)?)+ | (P | DL | table)+)>
+<!ATTLIST Revision
+	%attrs;
+	Postfix CDATA #IMPLIED
+>
+<!ELEMENT Ident (%bgbltitlestruct;)*>
+<!ATTLIST Ident
+	%attrs;
+>
+<!ELEMENT Title (%bgbltitlestruct;)*>
+<!ATTLIST Title
+	%attrs;
+	Align (left | center | right | justify | auto) "auto"
+>
+<!ELEMENT Subtitle (%bgbltitlestruct;)*>
+<!ATTLIST Subtitle
+	%attrs;
+	Align (left | center | right | justify | auto) "auto"
+>
+<!ELEMENT TOC ((Ident | Title | P | table)*)>
+<!ATTLIST TOC
+	%attrs;
+>
+<!ELEMENT Content (P | BR | table | AttArea | FnArea | TOC | Revision | Title | Subtitle | kommentar )*>
+<!ATTLIST Content
+	%attrs;
+>
+<!ELEMENT Accolade EMPTY>
+<!ATTLIST Accolade
+	Align (left | right) "right"
+	Size CDATA #IMPLIED
+	Step CDATA #IMPLIED
+>
+<!ELEMENT AttR EMPTY>
+<!ATTLIST AttR
+	ID IDREF #REQUIRED
+>
+<!ELEMENT AttArea (AttR)>
+<!ELEMENT P (%bgbltextstruct;)*>
+<!ATTLIST P
+	%attrs;
+>
+<!ELEMENT pre (#PCDATA | BR | B | I | small | SP | SUP | SUB | ABWFORMAT | kommentar )*>
+<!ATTLIST pre
+	xml:space (default|preserve) #FIXED "preserve"
+	calsid CDATA #IMPLIED
+	ignore (nein|ja) #IMPLIED
+>
+<!ELEMENT kommentar (#PCDATA | BR)*>
+<!ATTLIST kommentar
+	typ (Stand | Stand-Hinweis | Hinweis | Fundstelle | Verarbeitung) #REQUIRED
+>
+<!ELEMENT QuoteL EMPTY>
+<!ELEMENT QuoteR EMPTY>
+<!ELEMENT ABWFORMAT EMPTY>
+<!ATTLIST ABWFORMAT
+	typ (A|E|D) #REQUIRED
+>
+<!ELEMENT Footnotes (Footnote)+>
+<!ELEMENT Footnote (%bgbltextstruct;)*>
+<!ATTLIST Footnote
+	ID		ID 		#REQUIRED
+	Prefix 	CDATA 	#IMPLIED
+	FnZ 		CDATA 	#IMPLIED
+	Postfix 	CDATA 	#IMPLIED
+	Pos (exp | normal) "exp"
+	Group (manuell | column | page | table) "column"
+>
+
+<!ELEMENT langue (%bgbltextstruct;)*>
+<!ELEMENT kurzue (%bgbltextstruct;)*>
+<!ELEMENT amtabk (#PCDATA)>
+
+<!ELEMENT gliederungseinheit ((gliederungskennzahl), (gliederungsbez?), (gliederungstitel?))>
+<!ELEMENT gliederungskennzahl (#PCDATA)>
+<!ELEMENT gliederungsbez (#PCDATA)>
+<!ELEMENT gliederungstitel (%bgbltextstruct;)*>
+
+<!ELEMENT enbez (#PCDATA)>
+
+<!ELEMENT titel (%bgbltextstruct;)*>
+<!ATTLIST titel format NMTOKEN #IMPLIED>
+
+<!ELEMENT jurabk (#PCDATA)>
+
+<!ELEMENT ausfertigung-datum (#PCDATA)>
+<!ATTLIST ausfertigung-datum
+	manuell (nein | ja)  #REQUIRED
+>
+
+<!ELEMENT fundstelle (periodikum, zitstelle, anlageabgabe?)>
+<!ATTLIST fundstelle
+	typ (amtlich | nichtamtlich) #IMPLIED
+>
+<!ELEMENT periodikum (#PCDATA)>
+<!ELEMENT zitstelle (#PCDATA)>
+<!ELEMENT anlageabgabe (anlagedat?, dokst?, abgabedat?)>
+<!ELEMENT anlagedat (#PCDATA)>
+<!ELEMENT dokst (#PCDATA)>
+<!ELEMENT abgabedat (#PCDATA)>
+
+<!ELEMENT standangabe (standtyp, standkommentar)>
+<!ATTLIST standangabe
+    checked (ja|nein) #IMPLIED
+>
+<!ELEMENT standtyp (#PCDATA)>
+<!ELEMENT standkommentar (%bgbltextstruct;)*>
+
+<!ELEMENT text ( (TOC | Content)?, Footnotes? )>
+<!ATTLIST text format NMTOKEN #IMPLIED>
+
+<!ELEMENT fussnoten ( (TOC | Content)?, Footnotes? )>
+<!ATTLIST fussnoten format NMTOKEN #IMPLIED>

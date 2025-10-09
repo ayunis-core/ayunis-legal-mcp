@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  # PostgreSQL with pgvector extension for vector database
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: legal-mcp-postgres
+    environment:
+      POSTGRES_USER: legal_mcp
+      POSTGRES_PASSWORD: legal_mcp_password
+      POSTGRES_DB: legal_mcp_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U legal_mcp -d legal_mcp_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - legal-mcp-network
+
+  # FastAPI application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: legal-mcp-api
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./data:/app/data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - legal-mcp-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  legal-mcp-network:
+    driver: bridge
