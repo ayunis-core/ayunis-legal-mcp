@@ -70,6 +70,9 @@ class LegalTextRepository:
         if filter.sub_section:
             query = query.filter(LegalTextDB.sub_section == filter.sub_section)
 
+        # Sort by section and sub_section
+        query = query.order_by(LegalTextDB.section, LegalTextDB.sub_section)
+
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
@@ -141,6 +144,7 @@ class LegalTextRepository:
         query_embedding: Sequence[float],
         code: str,
         limit: int = 10,
+        cutoff: Optional[float] = None,
     ) -> List[Tuple[LegalTextDB, float]]:
         """
         Perform semantic similarity search using vector embeddings
@@ -152,6 +156,9 @@ class LegalTextRepository:
             query_embedding: The embedding vector of the search query
             code: The legal code to filter by (required)
             limit: Maximum number of results to return (default: 10)
+            cutoff: Optional maximum cosine distance threshold (default: None)
+                    Only return results with distance <= cutoff
+                    Recommended values: 0.5 (very strict) to 1.0 (permissive)
 
         Returns:
             List of tuples containing (LegalTextDB, distance_score)
@@ -165,17 +172,21 @@ class LegalTextRepository:
         """
         # Use pgvector's cosine distance operator (<=>)
         # The operator returns distance, so we order ascending (closest first)
+        distance_expr = LegalTextDB.text_vector.cosine_distance(query_embedding)  # type: ignore[attr-defined]
+
         query = (
             select(
                 LegalTextDB,
-                LegalTextDB.text_vector.cosine_distance(query_embedding).label(  # type: ignore[attr-defined]
-                    "distance"
-                ),
+                distance_expr.label("distance"),
             )
             .filter(LegalTextDB.code == code)
             .order_by("distance")
             .limit(limit)
         )
+
+        # Apply cutoff filter if specified
+        if cutoff is not None:
+            query = query.filter(distance_expr <= cutoff)
 
         result = await self.session.execute(query)
         rows = result.all()

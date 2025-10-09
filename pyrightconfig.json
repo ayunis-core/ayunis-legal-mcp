@@ -1,0 +1,6 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": ["store", "mcp"],
+  "exclude": ["**/__pycache__", "store/data"]
+}

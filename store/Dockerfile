@@ -19,12 +19,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY ./app ./app
-COPY ./tests ./tests
+COPY ./store/app ./app
+COPY ./store/tests ./tests
 
 # Copy alembic for database migrations
-COPY ./alembic ./alembic
-COPY alembic.ini .
+COPY ./store/alembic ./alembic
+COPY ./store/alembic.ini .
 
 # Create data directory for documents
 RUN mkdir -p /app/data

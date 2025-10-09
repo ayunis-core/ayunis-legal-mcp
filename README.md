@@ -1,289 +1,208 @@
-# Legal MCP API
+# Legal MCP - German Legal Texts Search System
 
-A modern, high-performance FastAPI application for importing and parsing German legal texts from gesetze-im-internet.de.
+A comprehensive system for searching and analyzing German legal texts, consisting of:
 
-## Features
+- **Store API**: FastAPI backend with PostgreSQL and vector embeddings
+- **MCP Server**: FastMCP server providing tools for AI assistants to query legal texts
 
-- ✨ **FastAPI** - Modern, fast web framework for building APIs
-- 🔧 **Pydantic** - Data validation using Python type annotations
-- 📝 **Automatic API Documentation** - Interactive docs at `/docs` (Swagger UI) and `/redoc`
-- 🧪 **Testing** - Comprehensive test suite with pytest
-- ⚙️ **Configuration Management** - Environment-based settings with Pydantic Settings
-- 📦 **Modular Structure** - Organized with routers and dependencies
-
-### Legal Text Features
-
-- 🗄️ **PostgreSQL + pgvector** - High-performance database with vector extension support
-- 🌐 **Web Scraping** - Automatic extraction of legal texts from gesetze-im-internet.de
-- 📄 **XML Parsing** - Comprehensive parser for German legal XML format (gii-norm.dtd)
-- 📊 **Metadata Tracking** - Full document metadata and versioning
-- 🐳 **Docker Compose** - Easy deployment with containerization
-
-## Project Structure
+## Architecture
 
 ```
-.
-├── app/
-│   ├── __init__.py
-│   ├── main.py              # Application entry point
-│   ├── config.py            # Configuration management
-│   ├── dependencies.py      # Shared dependencies
-│   └── routers/             # API route modules
-│       ├── __init__.py
-│       ├── items.py         # Items endpoints
-│       └── users.py         # Users endpoints
-├── tests/
-│   ├── __init__.py
-│   └── test_main.py         # Application tests
-├── requirements.txt         # Python dependencies
-├── .env.example            # Example environment variables
-├── .gitignore
-└── README.md
+┌─────────────────┐
+│   MCP Server    │  (Port 8001)
+│   (FastMCP)     │
+└────────┬────────┘
+         │
+         │ HTTP API calls
+         │
+         ▼
+┌─────────────────┐
+│   Store API     │  (Port 8000)
+│   (FastAPI)     │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│   PostgreSQL    │  (Port 5432)
+│   + pgvector    │
+└─────────────────┘
 ```
 
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
-- Python 3.9 or higher
-- [uv](https://docs.astral.sh/uv/) - An extremely fast Python package installer and resolver (10-100x faster than pip!)
+- Docker and Docker Compose
+- Ollama (running on host machine for embeddings)
 
-### Quick Start
-
-We provide an automated setup script that installs everything you need:
+### 1. Setup Environment
 
 ```bash
-# Make the setup script executable and run it
-chmod +x setup.sh
-./setup.sh
+# Copy the example environment file
+cp .env.example .env
+
+# Edit .env if needed (default values should work for Docker setup)
 ```
 
-The script will:
-
-- Check if `uv` is installed (and install it if needed)
-- Create a virtual environment with `uv venv`
-- Install all dependencies with `uv pip install`
-- Create a `.env` configuration file
-
-### Manual Installation
-
-If you prefer manual setup:
-
-1. **Install uv** (if not already installed):
-
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
-
-2. **Create a virtual environment:**
-
-   ```bash
-   uv venv
-   ```
-
-3. **Activate the virtual environment:**
-
-   - On macOS/Linux:
-     ```bash
-     source .venv/bin/activate
-     ```
-   - On Windows:
-     ```bash
-     .venv\Scripts\activate
-     ```
-
-4. **Install dependencies:**
-
-   ```bash
-   uv pip install -r requirements.txt
-   ```
-
-5. **Create `.env` file:**
-   ```bash
-   # Copy and customize the environment variables
-   cat > .env << 'EOF'
-   APP_NAME="Legal MCP API"
-   ADMIN_EMAIL="admin@example.com"
-   ITEMS_PER_USER=50
-   DEBUG=false
-   EOF
-   ```
-
-## Running the Application
-
-### Development Server
-
-Start the development server with auto-reload:
+### 2. Start All Services
 
 ```bash
-fastapi dev app/main.py
+# Build and start all services
+docker-compose up --build
+
+# Or run in detached mode
+docker-compose up -d
 ```
 
-The application will be available at:
+This will start:
 
-- API: http://127.0.0.1:8000
-- Interactive API docs (Swagger UI): http://127.0.0.1:8000/docs
-- Alternative API docs (ReDoc): http://127.0.0.1:8000/redoc
+- PostgreSQL database (port 5432)
+- Store API (port 8000)
+- MCP Server (port 8001)
 
-### Production Server
-
-For production, use:
+### 3. Run Database Migrations
 
 ```bash
-fastapi run app/main.py
+# Run Alembic migrations to set up the database
+docker-compose exec store-api alembic upgrade head
 ```
 
-Or with uvicorn directly:
+### 4. Import Legal Texts
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Example: Import the German Civil Code (BGB)
+curl -X POST http://localhost:8000/legal-texts/gesetze-im-internet/bgb
 ```
 
-## Running Tests
-
-Execute the test suite:
+### 5. Test the API
 
 ```bash
-pytest
+# Search for legal texts
+curl "http://localhost:8000/legal-texts/gesetze-im-internet/bgb/search?q=Kaufvertrag&limit=5"
 ```
-
-Run tests with coverage:
-
-```bash
-pytest --cov=app tests/
-```
-
-## API Endpoints
-
-### Root Endpoints
-
-- `GET /` - Welcome message
-- `GET /health` - Health check
-- `GET /info` - Application information
-
-### Items
-
-- `GET /items/` - List all items (with pagination)
-- `GET /items/{item_id}` - Get a specific item
-- `POST /items/` - Create a new item
-- `PUT /items/{item_id}` - Update an item
-- `DELETE /items/{item_id}` - Delete an item
-
-### Users
-
-- `GET /users/` - List all users (with pagination)
-- `GET /users/me` - Get current user
-- `GET /users/{username}` - Get a specific user
-- `POST /users/` - Create a new user
-
-## Configuration
-
-The application uses Pydantic Settings for configuration management. Configuration can be set via:
-
-1. Environment variables
-2. `.env` file
-
-Available settings:
-
-- `APP_NAME` - Application name (default: "Legal MCP API")
-- `ADMIN_EMAIL` - Administrator email
-- `ITEMS_PER_USER` - Maximum items per user (default: 50)
-- `DEBUG` - Debug mode (default: false)
 
 ## Development
 
-### Adding New Routes
+### Local Development (without Docker)
 
-1. Create a new router file in `app/routers/`
-2. Define your router with `APIRouter()`
-3. Include it in `app/main.py` using `app.include_router()`
+1. **Install dependencies:**
 
-Example:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
-```python
-# app/routers/new_route.py
-from fastapi import APIRouter
+2. **Set up local database:**
 
-router = APIRouter(prefix="/new", tags=["new"])
+   ```bash
+   # Start only PostgreSQL
+   docker-compose up postgres -d
 
-@router.get("/")
-async def read_new():
-    return {"message": "New route"}
+   # Update .env to use localhost
+   DATABASE_URL=postgresql+asyncpg://legal_mcp:legal_mcp_password@localhost:5432/legal_mcp_db
+   ```
+
+3. **Run migrations:**
+
+   ```bash
+   cd store
+   alembic upgrade head
+   ```
+
+4. **Start Store API:**
+
+   ```bash
+   cd store
+   uvicorn app.main:app --reload
+   ```
+
+5. **Start MCP Server:**
+   ```bash
+   cd mcp
+   export LEGAL_API_BASE_URL=http://localhost:8000
+   python -m server.main
+   ```
+
+### Project Structure
+
+```
+legal-mcp/
+├── store/              # Store API (FastAPI)
+│   ├── app/           # Application code
+│   ├── alembic/       # Database migrations
+│   ├── tests/         # Tests
+│   ├── Dockerfile     # Store API container
+│   └── requirements.txt
+├── mcp/               # MCP Server
+│   ├── server/        # Server code
+│   │   └── main.py   # Main server file
+│   ├── Dockerfile     # MCP server container
+│   └── requirements.txt
+├── docker-compose.yml # Main orchestration
+├── requirements.txt   # Combined dependencies
+└── README.md
 ```
 
-```python
-# app/main.py
-from app.routers import new_route
+## API Documentation
 
-app.include_router(new_route.router)
-```
+Once running, access the interactive API documentation:
 
-### Adding Dependencies
+- Store API: http://localhost:8000/docs
+- Store API (alternative): http://localhost:8000/redoc
 
-Define shared dependencies in `app/dependencies.py` and use them with FastAPI's `Depends()`:
+## Available Legal Codes
 
-```python
-from fastapi import Depends
-from app.dependencies import get_token_header
+- `bgb` - Bürgerliches Gesetzbuch (German Civil Code)
+- `stgb` - Strafgesetzbuch (German Criminal Code)
+- `gg` - Grundgesetz (German Constitution)
+- `hgb` - Handelsgesetzbuch (German Commercial Code)
+- `zpo` - Zivilprozessordnung (Code of Civil Procedure)
+- `stpo` - Strafprozessordnung (Code of Criminal Procedure)
 
-@router.get("/protected")
-async def protected_route(token: str = Depends(get_token_header)):
-    return {"message": "Protected data"}
-```
+## Environment Variables
 
-## Why uv?
+### Store API
 
-This project uses [uv](https://docs.astral.sh/uv/) instead of traditional pip for package management. Benefits include:
+- `DATABASE_URL`: PostgreSQL connection string
+- `OLLAMA_HOST`: Ollama API endpoint for embeddings
 
-- ⚡ **10-100x faster** than pip for package installation and resolution
-- 🦀 **Written in Rust** - Extremely performant and reliable
-- 🔒 **Better dependency resolution** - More reliable than pip's resolver
-- 📦 **Drop-in replacement** - Uses the same commands as pip (e.g., `uv pip install`)
-- 🎯 **Modern Python tooling** - Replaces pip, pip-tools, pipx, poetry, and more
+### MCP Server
 
-### uv Quick Reference
+- `LEGAL_API_BASE_URL`: Base URL for the Store API
+
+## Troubleshooting
+
+### Services won't start
 
 ```bash
-# Install packages
-uv pip install package-name
-uv pip install -r requirements.txt
+# Check logs
+docker-compose logs
 
-# Uninstall packages
-uv pip uninstall package-name
-
-# List installed packages
-uv pip list
-
-# Freeze dependencies
-uv pip freeze
-
-# Check for conflicts
-uv pip check
-
-# Create virtual environment
-uv venv
-uv venv --python 3.11  # With specific Python version
+# Check specific service
+docker-compose logs store-api
 ```
 
-## Technologies Used
+### Database connection issues
 
-- **FastAPI** - Web framework
-- **Pydantic** - Data validation
-- **Uvicorn** - ASGI server
-- **pytest** - Testing framework
-- **httpx** - HTTP client for testing
-- **uv** - Fast Python package installer and resolver
-- **PostgreSQL + pgvector** - Database with vector extension
-- **SQLAlchemy** - ORM and database toolkit
-- **BeautifulSoup4** - Web scraping
-- **lxml** - XML parsing
+```bash
+# Restart PostgreSQL
+docker-compose restart postgres
+
+# Check PostgreSQL health
+docker-compose exec postgres pg_isready -U legal_mcp
+```
+
+### Reset everything
+
+```bash
+# Stop and remove all containers, volumes
+docker-compose down -v
+
+# Rebuild from scratch
+docker-compose up --build
+```
 
 ## License
 
-This project is licensed under the MIT License.
-
-## Resources
-
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [Pydantic Documentation](https://docs.pydantic.dev/)
-- [Python Type Hints](https://docs.python.org/3/library/typing.html)
+[Your License Here]

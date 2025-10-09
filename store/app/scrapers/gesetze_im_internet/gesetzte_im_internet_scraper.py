@@ -30,7 +30,10 @@ class GesetzteImInternetScraper(Scraper):
                         extracted_legal_texts.append(
                             LegalText(
                                 text=p,
-                                code=norm.metadaten.jurabk[0],
+                                # code=norm.metadaten.jurabk[0],
+                                # we use the code from the url (e.g. rag_1) instead of the jurabk (e.g. RAG 1)
+                                # so we know what to query later
+                                code=code,
                                 section=norm.metadaten.enbez,
                                 sub_section=self._extract_sub_section(p),
                             )

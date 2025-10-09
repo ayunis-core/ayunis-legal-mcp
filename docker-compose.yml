@@ -21,25 +21,45 @@ services:
     networks:
       - legal-mcp-network
 
-  # FastAPI application
-  api:
+  # Legal Texts Store API (FastAPI)
+  store-api:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: legal-mcp-api
-    env_file:
-      - .env
+      dockerfile: ./store/Dockerfile
+    container_name: legal-mcp-store-api
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://legal_mcp:legal_mcp_password@postgres:5432/legal_mcp_db
+      - OLLAMA_HOST=http://host.docker.internal:11434
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ./app:/app/app
-      - ./data:/app/data
+      - ./store/app:/app/app
+      - ./store/data:/app/data
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - legal-mcp-network
+    restart: unless-stopped
+
+  # MCP Server
+  mcp-server:
+    build:
+      context: .
+      dockerfile: ./mcp/Dockerfile
+    container_name: legal-mcp-server
+    environment:
+      - LEGAL_API_BASE_URL=http://store-api:8000
+    ports:
+      - "8001:8001"
+    depends_on:
+      - store-api
+    volumes:
+      - ./mcp/server:/app/server
+    networks:
+      - legal-mcp-network
+    restart: unless-stopped
 
 volumes:
   postgres_data:
