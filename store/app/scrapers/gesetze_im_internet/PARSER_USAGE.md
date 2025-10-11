@@ -1,14 +1,14 @@
-# German Legal XML Parser - Complete Guide
+# German Legal XML Parser - Usage Guide
 
 ## Overview
 
-I've created a comprehensive Python parser for the **gii-norm.dtd** format used by gesetze-im-internet.de. The parser uses `lxml` for XML processing and Python dataclasses for structured data representation.
+A comprehensive Python parser for the **gii-norm.dtd** format used by gesetze-im-internet.de. The parser uses `lxml` for XML processing and Python dataclasses for structured data representation.
 
-## Files Created
+## Components
 
 ### Core Parser
 
-- **`app/services/scrapers/xml_parser.py`** - Main parser implementation (460+ lines)
+- **`app/services/scrapers/xml_parser.py`** - Main parser implementation
   - 10 dataclass models representing the DTD structure
   - Complete parsing logic for all major elements
   - Text extraction with formatting preservation
@@ -210,9 +210,9 @@ with open('output.json', 'w', encoding='utf-8') as f:
     json.dump(norm_dict, f, indent=2, ensure_ascii=False)
 ```
 
-## Integration with Existing Scraper
+## Integration with Scraper
 
-You can integrate the parser with your existing `GesetzImInternetScraper`:
+Integrate the parser with the `GesetzImInternetScraper`:
 
 ```python
 from app.services.scrapers.gesetzte_im_internet_scraper import GesetzImInternetScraper
@@ -433,9 +433,8 @@ For examples, see:
 - `tests/test_xml_parser.py` - Test examples
 - `xml_parser.py` (bottom) - Basic usage in `__main__`
 
----
+## Version Information
 
-**Parser Version**: 1.0  
-**DTD Version**: gii-norm.dtd v1.01 (2012-06-25)  
-**Python**: 3.7+  
-**License**: Compatible with your project license
+**Parser Version**: 1.0
+**DTD Version**: gii-norm.dtd v1.01 (2012-06-25)
+**Python**: 3.7+
