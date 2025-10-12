@@ -27,3 +27,7 @@ lxml-stubs==0.5.1
 # MCP Server dependencies
 fastmcp==2.12.4
 
+# CLI dependencies
+typer==0.15.1
+rich==13.9.4
+
