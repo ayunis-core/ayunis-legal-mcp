@@ -4,6 +4,7 @@ A comprehensive system for searching and analyzing German legal texts using vect
 
 - **Store API**: FastAPI backend with PostgreSQL, pgvector, and Ollama embeddings
 - **MCP Server**: FastMCP server providing tools for AI assistants to query legal texts
+- **CLI Tool**: Command-line interface for importing and querying legal texts
 - **Web Scraper**: Automatic extraction of legal texts from gesetze-im-internet.de
 - **XML Parser**: Comprehensive parser for German legal XML format (gii-norm.dtd)
 
@@ -12,6 +13,7 @@ A comprehensive system for searching and analyzing German legal texts using vect
 - [Features](#features)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
+- [CLI Tool](#cli-tool)
 - [Environment Configuration](#environment-configuration)
 - [API Documentation](#api-documentation)
 - [Legal Text Features](#legal-text-features)
@@ -40,6 +42,15 @@ A comprehensive system for searching and analyzing German legal texts using vect
 - 🔧 **FastMCP** - Modern MCP server implementation
 - 🤝 **AI Assistant Integration** - Provides tools for querying legal texts
 - 🔌 **HTTP API Client** - Connects to Store API for data access
+
+### CLI Tool Features
+
+- 📋 **List Commands** - View imported codes and available catalog
+- 📥 **Import Commands** - Import legal codes with progress indication
+- 🔍 **Query Commands** - Retrieve texts by code, section, and sub-section
+- 🔎 **Search Commands** - Semantic search with similarity scoring
+- 📊 **Multiple Output Formats** - Table view or JSON output
+- ⚙️ **Configurable** - Custom API URL support via flag or environment variable
 
 ## Architecture
 
@@ -156,6 +167,147 @@ curl "http://localhost:8000/legal-texts/gesetze-im-internet/rag_1/search?q=Versi
 
 # Access interactive API documentation
 open http://localhost:8000/docs
+```
+
+## CLI Tool
+
+The CLI provides a convenient command-line interface for managing legal texts without writing code.
+
+### Installation
+
+```bash
+# Install in development mode (from project root)
+pip install -e .
+
+# Verify installation
+legal-mcp --help
+```
+
+### Prerequisites
+
+The CLI requires the Store API to be running:
+
+```bash
+# Start all services
+docker-compose up -d
+
+# Verify Store API is running
+curl http://localhost:8000/health
+```
+
+### Available Commands
+
+#### List Commands
+
+**List Imported Codes**
+```bash
+# Show all imported legal codes in table format
+legal-mcp list codes
+
+# Output as JSON
+legal-mcp list codes --json
+```
+
+**List Available Catalog**
+```bash
+# Show all available legal codes that can be imported
+legal-mcp list catalog
+
+# Output as JSON
+legal-mcp list catalog --json
+```
+
+#### Import Command
+
+```bash
+# Import a single legal code
+legal-mcp import --code bgb
+
+# Import multiple legal codes
+legal-mcp import --code bgb --code stgb --code gg
+
+# Import with JSON output
+legal-mcp import --code bgb --json
+```
+
+The import command displays a spinner while processing and shows progress for each code.
+
+#### Query Command
+
+```bash
+# Query all texts for a legal code
+legal-mcp query bgb
+
+# Query specific section
+legal-mcp query bgb --section "§ 1"
+
+# Query specific sub-section
+legal-mcp query bgb --section "§ 1" --sub-section "1"
+
+# Output as JSON
+legal-mcp query bgb --section "§ 1" --json
+```
+
+#### Search Command
+
+```bash
+# Semantic search in a legal code
+legal-mcp search bgb "Kaufvertrag"
+
+# Limit number of results
+legal-mcp search bgb "Kaufvertrag" --limit 5
+
+# Set similarity cutoff threshold (0-2, lower = stricter)
+legal-mcp search bgb "Kaufvertrag" --cutoff 0.5
+
+# Output as JSON
+legal-mcp search bgb "Kaufvertrag" --json
+```
+
+### Configuration
+
+**Default API URL**: `http://localhost:8000`
+
+**Override with environment variable:**
+```bash
+export LEGAL_API_BASE_URL=http://custom-host:8000
+legal-mcp list codes
+```
+
+**Override with command flag:**
+```bash
+legal-mcp list codes --api-url http://custom-host:8000
+```
+
+### Output Formats
+
+**Table Format (default):**
+- Clean, formatted tables with Rich library
+- Text truncation for readability
+- Color-coded output
+
+**JSON Format:**
+- Complete data with full text content
+- Machine-readable for scripting
+- Use `--json` flag with any command
+
+### Example Workflow
+
+```bash
+# 1. Check available legal codes
+legal-mcp list catalog
+
+# 2. Import desired codes
+legal-mcp import --code bgb --code stgb
+
+# 3. Verify imports
+legal-mcp list codes
+
+# 4. Query specific sections
+legal-mcp query bgb --section "§ 433"
+
+# 5. Perform semantic search
+legal-mcp search bgb "Kaufvertrag" --limit 10
 ```
 
 ## Environment Configuration
@@ -289,6 +441,9 @@ The parser extracts:
    python -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    pip install -r requirements.txt
+
+   # Install CLI tool in development mode
+   pip install -e .
    ```
 
 2. **Set up local database:**
@@ -334,4 +489,7 @@ pytest --cov=app tests/
 
 # Run specific test file
 pytest tests/test_main.py -v
+
+# Run CLI tests specifically
+pytest tests/cli/ -v
 ```
