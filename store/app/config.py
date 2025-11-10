@@ -36,6 +36,18 @@ class Settings(BaseSettings):
     ollama_auth_token: str = Field(
         default="", description="Ollama authentication token"
     )
+    ollama_timeout: int = Field(
+        default=120,
+        gt=0,
+        le=600,
+        description="Request timeout in seconds for Ollama API calls (max 600s / 10 minutes)",
+    )
+    ollama_batch_size: int = Field(
+        default=50,
+        gt=0,
+        le=500,
+        description="Number of texts to embed per request to Ollama (affects memory usage)",
+    )
 
 
 @lru_cache
