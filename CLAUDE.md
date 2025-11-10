@@ -93,10 +93,10 @@ Located in `store/app/`:
 
 Located in `mcp/server/main.py`:
 
-Provides tools for AI assistants:
+Provides read-only tools for AI assistants:
 - `search_legal_texts` - Semantic search
 - `get_legal_section` - Retrieve specific sections
-- `import_legal_code` - Import complete legal codes
+- `get_available_codes` - List all available legal codes in the database
 
 ### Database
 
