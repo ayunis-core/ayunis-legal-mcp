@@ -14,7 +14,9 @@ from app.database import SYNC_DATABASE_URL
 config = context.config
 
 # Set the database URL from database.py
-config.set_main_option("sqlalchemy.url", SYNC_DATABASE_URL)
+# Escape % characters by doubling them for ConfigParser compatibility
+escaped_url = SYNC_DATABASE_URL.replace('%', '%%')
+config.set_main_option("sqlalchemy.url", escaped_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
