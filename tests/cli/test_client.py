@@ -118,3 +118,90 @@ def test_client_close_method(mock_httpx_client):
     client.close()
 
     mock_httpx_client.close.assert_called_once()
+
+
+def test_search_texts_without_code(mock_httpx_client):
+    """Test that search_texts works without code (searches all codes)"""
+    mock_response = Mock()
+    mock_response.json.return_value = {
+        "query": "test",
+        "code": None,
+        "count": 2,
+        "results": [
+            {"text": "Result 1", "code": "bgb", "section": "§ 1", "sub_section": "1", "similarity_score": 0.3},
+            {"text": "Result 2", "code": "stgb", "section": "§ 1", "sub_section": "1", "similarity_score": 0.5}
+        ]
+    }
+    mock_httpx_client.get.return_value = mock_response
+
+    client = LegalMCPClient()
+    result = client.search_texts("test query")
+
+    assert result["code"] is None
+    assert result["count"] == 2
+    # Verify the global search endpoint was called without code parameter
+    mock_httpx_client.get.assert_called_once_with(
+        "/legal-texts/search",
+        params={"q": "test query", "limit": 10, "cutoff": 0.7}
+    )
+
+
+def test_search_texts_with_code(mock_httpx_client):
+    """Test that search_texts works with code filter"""
+    mock_response = Mock()
+    mock_response.json.return_value = {
+        "query": "test",
+        "code": "bgb",
+        "count": 1,
+        "results": [
+            {"text": "Result 1", "code": "bgb", "section": "§ 1", "sub_section": "1", "similarity_score": 0.3}
+        ]
+    }
+    mock_httpx_client.get.return_value = mock_response
+
+    client = LegalMCPClient()
+    result = client.search_texts("test query", code="bgb")
+
+    assert result["code"] == "bgb"
+    assert result["count"] == 1
+    # Verify the global search endpoint was called with code parameter
+    mock_httpx_client.get.assert_called_once_with(
+        "/legal-texts/search",
+        params={"q": "test query", "limit": 10, "cutoff": 0.7, "code": "bgb"}
+    )
+
+
+def test_search_texts_with_custom_params(mock_httpx_client):
+    """Test that search_texts passes custom limit and cutoff"""
+    mock_response = Mock()
+    mock_response.json.return_value = {
+        "query": "test",
+        "code": None,
+        "count": 0,
+        "results": []
+    }
+    mock_httpx_client.get.return_value = mock_response
+
+    client = LegalMCPClient()
+    client.search_texts("test query", limit=5, cutoff=0.5)
+
+    mock_httpx_client.get.assert_called_once_with(
+        "/legal-texts/search",
+        params={"q": "test query", "limit": 5, "cutoff": 0.5}
+    )
+
+
+def test_search_texts_raises_on_http_error(mock_httpx_client):
+    """Test that search_texts raises HTTPStatusError on API error"""
+    mock_response = Mock()
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "500 Internal Server Error",
+        request=Mock(),
+        response=Mock()
+    )
+    mock_httpx_client.get.return_value = mock_response
+
+    client = LegalMCPClient()
+
+    with pytest.raises(httpx.HTTPStatusError):
+        client.search_texts("test query")
