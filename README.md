@@ -107,6 +107,17 @@ A comprehensive system for searching and analyzing German legal texts using vect
 - Ollama (local or remote endpoint for embeddings)
 - Git
 
+> ⚠️ **Important: Required Ollama Model**
+>
+> This project uses a **hardcoded embedding model**: `ryanshillington/Qwen3-Embedding-4B:latest`
+>
+> You must pull this specific model before importing legal texts:
+> ```bash
+> ollama pull ryanshillington/Qwen3-Embedding-4B:latest
+> ```
+>
+> The model produces 2560-dimensional vectors, and changing the model would require database schema modifications and re-importing all legal texts.
+
 ### 1. Clone and Setup
 
 ```bash
@@ -329,6 +340,8 @@ OLLAMA_AUTH_TOKEN=your-auth-token-here
 # PostgreSQL Configuration
 POSTGRES_HOST=postgres  # Use 'postgres' in Docker, 'localhost' for local dev
 ```
+
+> **Note:** While the Ollama endpoint URL is configurable, the embedding model (`ryanshillington/Qwen3-Embedding-4B:latest`) is currently hardcoded in `store/app/embedding.py`. Ensure your Ollama instance has this model available.
 
 ### Additional Configuration (set in docker-compose.yml)
 
