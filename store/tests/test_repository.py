@@ -307,3 +307,68 @@ class TestLegalTextRepository:
         # Verify
         assert results == []
         mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_semantic_search_without_code(self, repository, mock_session):
+        """Test semantic search without code filter (searches all codes)"""
+        # Setup mock
+        mock_legal_text_bgb = LegalTextDB(
+            id=1,
+            text="BGB Test text",
+            code="bgb",
+            section="§ 1",
+            sub_section="1",
+            text_vector=[0.1] * 2560
+        )
+        mock_legal_text_stgb = LegalTextDB(
+            id=2,
+            text="StGB Test text",
+            code="stgb",
+            section="§ 1",
+            sub_section="1",
+            text_vector=[0.2] * 2560
+        )
+        mock_result = MagicMock()
+        mock_result.all.return_value = [(mock_legal_text_bgb, 0.3), (mock_legal_text_stgb, 0.5)]
+        mock_session.execute.return_value = mock_result
+
+        # Execute - no code parameter
+        query_embedding = [0.2] * 2560
+        results = await repository.semantic_search(
+            query_embedding=query_embedding,
+            limit=10
+        )
+
+        # Verify
+        assert len(results) == 2
+        assert results[0][0].code == "bgb"
+        assert results[1][0].code == "stgb"
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_semantic_search_with_code_none(self, repository, mock_session):
+        """Test semantic search with code explicitly set to None"""
+        # Setup mock
+        mock_legal_text = LegalTextDB(
+            id=1,
+            text="Test text",
+            code="bgb",
+            section="§ 1",
+            sub_section="1",
+            text_vector=[0.1] * 2560
+        )
+        mock_result = MagicMock()
+        mock_result.all.return_value = [(mock_legal_text, 0.3)]
+        mock_session.execute.return_value = mock_result
+
+        # Execute with code=None
+        query_embedding = [0.2] * 2560
+        results = await repository.semantic_search(
+            query_embedding=query_embedding,
+            code=None,
+            limit=10
+        )
+
+        # Verify
+        assert len(results) == 1
+        mock_session.execute.assert_called_once()
