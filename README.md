@@ -216,6 +216,7 @@ curl http://localhost:8000/health
 #### List Commands
 
 **List Imported Codes**
+
 ```bash
 # Show all imported legal codes in table format
 legal-mcp list codes
@@ -225,6 +226,7 @@ legal-mcp list codes --json
 ```
 
 **List Available Catalog**
+
 ```bash
 # Show all available legal codes that can be imported
 legal-mcp list catalog
@@ -285,12 +287,14 @@ legal-mcp search bgb "Kaufvertrag" --json
 **Default API URL**: `http://localhost:8000`
 
 **Override with environment variable:**
+
 ```bash
 export LEGAL_API_BASE_URL=http://custom-host:8000
 legal-mcp list codes
 ```
 
 **Override with command flag:**
+
 ```bash
 legal-mcp list codes --api-url http://custom-host:8000
 ```
@@ -298,11 +302,13 @@ legal-mcp list codes --api-url http://custom-host:8000
 ### Output Formats
 
 **Table Format (default):**
+
 - Clean, formatted tables with Rich library
 - Text truncation for readability
 - Color-coded output
 
 **JSON Format:**
+
 - Complete data with full text content
 - Machine-readable for scripting
 - Use `--json` flag with any command
@@ -579,7 +585,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- **Documentation**: Check this README and the `_docs/` directory
 - **Issues**: Open an issue on GitHub for bugs or feature requests
 - **Discussions**: Use GitHub Discussions for questions and community chat
 
