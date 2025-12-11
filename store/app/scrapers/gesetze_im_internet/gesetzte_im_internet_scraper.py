@@ -25,17 +25,26 @@ class GesetzteImInternetScraper(Scraper):
                 and norm.textdaten.text
                 and norm.textdaten.text.formatted_text
             ):
-                for p in norm.textdaten.text.formatted_text.paragraphs:
-                    if norm.metadaten.enbez:
+                if norm.metadaten.enbez:
+                    # Group paragraphs by sub_section to avoid duplicates
+                    # (multiple paragraphs with same sub_section get concatenated)
+                    sub_section_texts: dict[str, list[str]] = {}
+                    for p in norm.textdaten.text.formatted_text.paragraphs:
+                        sub_section = self._extract_sub_section(p)
+                        if sub_section not in sub_section_texts:
+                            sub_section_texts[sub_section] = []
+                        sub_section_texts[sub_section].append(p)
+
+                    # Create one LegalText per unique sub_section
+                    for sub_section, texts in sub_section_texts.items():
                         extracted_legal_texts.append(
                             LegalText(
-                                text=p,
-                                # code=norm.metadaten.jurabk[0],
+                                text="\n\n".join(texts),
                                 # we use the code from the url (e.g. rag_1) instead of the jurabk (e.g. RAG 1)
                                 # so we know what to query later
                                 code=code,
                                 section=norm.metadaten.enbez,
-                                sub_section=self._extract_sub_section(p),
+                                sub_section=sub_section,
                             )
                         )
         return extracted_legal_texts
