@@ -148,7 +148,7 @@ class LegalTextRepository:
     async def semantic_search(
         self,
         query_embedding: Sequence[float],
-        code: str,
+        code: Optional[str] = None,
         limit: int = 10,
         cutoff: Optional[float] = None,
     ) -> List[Tuple[LegalTextDB, float]]:
@@ -156,11 +156,11 @@ class LegalTextRepository:
         Perform semantic similarity search using vector embeddings
 
         Uses cosine distance to find the most similar legal texts to the query.
-        Results are filtered by code and ordered by similarity (closest first).
+        Results are optionally filtered by code and ordered by similarity (closest first).
 
         Args:
             query_embedding: The embedding vector of the search query
-            code: The legal code to filter by (required)
+            code: Optional legal code to filter by. If None, searches all codes.
             limit: Maximum number of results to return (default: 10)
             cutoff: Optional maximum cosine distance threshold (default: None)
                     Only return results with distance <= cutoff
@@ -185,10 +185,13 @@ class LegalTextRepository:
                 LegalTextDB,
                 distance_expr.label("distance"),
             )
-            .filter(LegalTextDB.code == code)
             .order_by("distance")
             .limit(limit)
         )
+
+        # Filter by code only if specified
+        if code is not None:
+            query = query.filter(LegalTextDB.code == code)
 
         # Apply cutoff filter if specified
         if cutoff is not None:

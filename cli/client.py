@@ -123,8 +123,8 @@ class LegalMCPClient:
 
     def search_texts(
         self,
-        code: str,
         query: str,
+        code: Optional[str] = None,
         limit: int = 10,
         cutoff: float = 0.7
     ) -> Dict[str, Any]:
@@ -132,8 +132,9 @@ class LegalMCPClient:
         Perform semantic search on legal texts
 
         Args:
-            code: Legal code identifier (e.g., 'bgb', 'stgb')
             query: Search query text
+            code: Optional legal code identifier (e.g., 'bgb', 'stgb').
+                  If not provided, searches all codes.
             limit: Maximum number of results (default: 10)
             cutoff: Similarity cutoff threshold (default: 0.7)
 
@@ -143,14 +144,19 @@ class LegalMCPClient:
         Raises:
             httpx.HTTPStatusError: If the API returns an error status
         """
-        params = {
+        params: Dict[str, Any] = {
             "q": query,
             "limit": limit,
             "cutoff": cutoff
         }
 
+        # Add code to params if provided
+        if code is not None:
+            params["code"] = code
+
+        # Use the global search endpoint which accepts optional code parameter
         response = self.client.get(
-            f"/legal-texts/gesetze-im-internet/{code}/search",
+            "/legal-texts/search",
             params=params
         )
         response.raise_for_status()

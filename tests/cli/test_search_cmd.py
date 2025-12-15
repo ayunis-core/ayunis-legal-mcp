@@ -16,8 +16,37 @@ _test_app.command()(search_texts)
 
 
 @patch("cli.commands.search_cmd.LegalMCPClient")
-def test_search_success(mock_client_class):
-    """Test searching texts successfully"""
+def test_search_success_without_code(mock_client_class):
+    """Test searching texts successfully without code (searches all codes)"""
+    # Setup mock client with context manager support
+    mock_client = MagicMock()
+    mock_client.health_check.return_value = True
+    mock_client.search_texts.return_value = {
+        "code": None,
+        "query": "Kaufvertrag",
+        "count": 2,
+        "results": [
+            {"section": "§ 433", "sub_section": "1", "code": "bgb", "text": "Sample text about contract", "similarity_score": 0.95},
+            {"section": "§ 434", "sub_section": "", "code": "bgb", "text": "Another text", "similarity_score": 0.85}
+        ]
+    }
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = None
+    mock_client_class.return_value = mock_client
+
+    # Run command without code (searches all)
+    result = runner.invoke(_test_app, ["Kaufvertrag"])
+
+    # Verify success
+    assert result.exit_code == 0
+    assert "§ 433" in result.stdout
+    assert "§ 434" in result.stdout
+    mock_client.search_texts.assert_called_once_with("Kaufvertrag", None, 10, 0.7)
+
+
+@patch("cli.commands.search_cmd.LegalMCPClient")
+def test_search_success_with_code(mock_client_class):
+    """Test searching texts successfully with code filter"""
     # Setup mock client with context manager support
     mock_client = MagicMock()
     mock_client.health_check.return_value = True
@@ -26,22 +55,48 @@ def test_search_success(mock_client_class):
         "query": "Kaufvertrag",
         "count": 2,
         "results": [
-            {"section": "§ 433", "sub_section": "1", "text": "Sample text about contract", "similarity_score": 0.95},
-            {"section": "§ 434", "sub_section": "", "text": "Another text", "similarity_score": 0.85}
+            {"section": "§ 433", "sub_section": "1", "code": "bgb", "text": "Sample text about contract", "similarity_score": 0.95},
+            {"section": "§ 434", "sub_section": "", "code": "bgb", "text": "Another text", "similarity_score": 0.85}
         ]
     }
     mock_client.__enter__.return_value = mock_client
     mock_client.__exit__.return_value = None
     mock_client_class.return_value = mock_client
 
-    # Run command
-    result = runner.invoke(_test_app, ["bgb", "Kaufvertrag"])
+    # Run command with --code option
+    result = runner.invoke(_test_app, ["Kaufvertrag", "--code", "bgb"])
 
     # Verify success
     assert result.exit_code == 0
     assert "§ 433" in result.stdout
     assert "§ 434" in result.stdout
-    mock_client.search_texts.assert_called_once_with("bgb", "Kaufvertrag", 10, 0.7)
+    mock_client.search_texts.assert_called_once_with("Kaufvertrag", "bgb", 10, 0.7)
+
+
+@patch("cli.commands.search_cmd.LegalMCPClient")
+def test_search_with_code_short_option(mock_client_class):
+    """Test searching with -c short option for code"""
+    # Setup mock client with context manager support
+    mock_client = MagicMock()
+    mock_client.health_check.return_value = True
+    mock_client.search_texts.return_value = {
+        "code": "stgb",
+        "query": "Diebstahl",
+        "count": 1,
+        "results": [
+            {"section": "§ 242", "sub_section": "1", "code": "stgb", "text": "Sample text", "similarity_score": 0.95}
+        ]
+    }
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = None
+    mock_client_class.return_value = mock_client
+
+    # Run command with -c short option
+    result = runner.invoke(_test_app, ["Diebstahl", "-c", "stgb"])
+
+    # Verify success
+    assert result.exit_code == 0
+    mock_client.search_texts.assert_called_once_with("Diebstahl", "stgb", 10, 0.7)
 
 
 @patch("cli.commands.search_cmd.LegalMCPClient")
@@ -51,11 +106,11 @@ def test_search_with_custom_limit(mock_client_class):
     mock_client = MagicMock()
     mock_client.health_check.return_value = True
     mock_client.search_texts.return_value = {
-        "code": "bgb",
+        "code": None,
         "query": "Kaufvertrag",
         "count": 1,
         "results": [
-            {"section": "§ 433", "sub_section": "1", "text": "Sample text", "similarity_score": 0.95}
+            {"section": "§ 433", "sub_section": "1", "code": "bgb", "text": "Sample text", "similarity_score": 0.95}
         ]
     }
     mock_client.__enter__.return_value = mock_client
@@ -63,11 +118,11 @@ def test_search_with_custom_limit(mock_client_class):
     mock_client_class.return_value = mock_client
 
     # Run command
-    result = runner.invoke(_test_app, ["bgb", "Kaufvertrag", "--limit", "5"])
+    result = runner.invoke(_test_app, ["Kaufvertrag", "--limit", "5"])
 
     # Verify success
     assert result.exit_code == 0
-    mock_client.search_texts.assert_called_once_with("bgb", "Kaufvertrag", 5, 0.7)
+    mock_client.search_texts.assert_called_once_with("Kaufvertrag", None, 5, 0.7)
 
 
 @patch("cli.commands.search_cmd.LegalMCPClient")
@@ -77,23 +132,23 @@ def test_search_with_custom_cutoff(mock_client_class):
     mock_client = MagicMock()
     mock_client.health_check.return_value = True
     mock_client.search_texts.return_value = {
-        "code": "bgb",
+        "code": None,
         "query": "Kaufvertrag",
         "count": 1,
         "results": [
-            {"section": "§ 433", "sub_section": "1", "text": "Sample text", "similarity_score": 0.95}
+            {"section": "§ 433", "sub_section": "1", "code": "bgb", "text": "Sample text", "similarity_score": 0.95}
         ]
     }
     mock_client.__enter__.return_value = mock_client
     mock_client.__exit__.return_value = None
     mock_client_class.return_value = mock_client
 
-    # Run command
-    result = runner.invoke(_test_app, ["bgb", "Kaufvertrag", "--cutoff", "0.5"])
+    # Run command with -x short option for cutoff
+    result = runner.invoke(_test_app, ["Kaufvertrag", "--cutoff", "0.5"])
 
     # Verify success
     assert result.exit_code == 0
-    mock_client.search_texts.assert_called_once_with("bgb", "Kaufvertrag", 10, 0.5)
+    mock_client.search_texts.assert_called_once_with("Kaufvertrag", None, 10, 0.5)
 
 
 @patch("cli.commands.search_cmd.LegalMCPClient")
@@ -107,7 +162,7 @@ def test_search_api_unreachable(mock_client_class):
     mock_client_class.return_value = mock_client
 
     # Run command
-    result = runner.invoke(_test_app, ["bgb", "Kaufvertrag"])
+    result = runner.invoke(_test_app, ["Kaufvertrag"])
 
     # Verify failure
     assert result.exit_code == 1
@@ -125,7 +180,7 @@ def test_search_with_json_output(mock_client_class):
         "query": "Kaufvertrag",
         "count": 1,
         "results": [
-            {"section": "§ 433", "sub_section": "1", "text": "Sample text", "similarity_score": 0.95}
+            {"section": "§ 433", "sub_section": "1", "code": "bgb", "text": "Sample text", "similarity_score": 0.95}
         ]
     }
     mock_client.__enter__.return_value = mock_client
@@ -133,7 +188,7 @@ def test_search_with_json_output(mock_client_class):
     mock_client_class.return_value = mock_client
 
     # Run command with --json flag
-    result = runner.invoke(_test_app, ["bgb", "Kaufvertrag", "--json"])
+    result = runner.invoke(_test_app, ["Kaufvertrag", "--code", "bgb", "--json"])
 
     # Verify success and JSON output
     assert result.exit_code == 0
@@ -151,7 +206,7 @@ def test_search_with_custom_api_url(mock_client_class):
         "query": "Kaufvertrag",
         "count": 1,
         "results": [
-            {"section": "§ 433", "sub_section": "1", "text": "Sample text", "similarity_score": 0.95}
+            {"section": "§ 433", "sub_section": "1", "code": "bgb", "text": "Sample text", "similarity_score": 0.95}
         ]
     }
     mock_client.__enter__.return_value = mock_client
@@ -160,7 +215,7 @@ def test_search_with_custom_api_url(mock_client_class):
 
     # Run command with custom API URL
     custom_url = "http://custom:9999"
-    result = runner.invoke(_test_app, ["bgb", "Kaufvertrag", "--api-url", custom_url])
+    result = runner.invoke(_test_app, ["Kaufvertrag", "--code", "bgb", "--api-url", custom_url])
 
     # Verify client was initialized with custom URL
     mock_client_class.assert_called_with(custom_url)
@@ -179,8 +234,34 @@ def test_search_handles_exception(mock_client_class):
     mock_client_class.return_value = mock_client
 
     # Run command
-    result = runner.invoke(_test_app, ["bgb", "Kaufvertrag"])
+    result = runner.invoke(_test_app, ["Kaufvertrag"])
 
     # Verify failure
     assert result.exit_code == 1
     assert "Error:" in result.stdout
+
+
+@patch("cli.commands.search_cmd.LegalMCPClient")
+def test_search_with_code_and_all_options(mock_client_class):
+    """Test searching with code and all other options combined"""
+    # Setup mock client with context manager support
+    mock_client = MagicMock()
+    mock_client.health_check.return_value = True
+    mock_client.search_texts.return_value = {
+        "code": "stgb",
+        "query": "Diebstahl",
+        "count": 1,
+        "results": [
+            {"section": "§ 242", "sub_section": "1", "code": "stgb", "text": "Sample text", "similarity_score": 0.4}
+        ]
+    }
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = None
+    mock_client_class.return_value = mock_client
+
+    # Run command with all options
+    result = runner.invoke(_test_app, ["Diebstahl", "-c", "stgb", "-l", "5", "--cutoff", "0.5"])
+
+    # Verify success
+    assert result.exit_code == 0
+    mock_client.search_texts.assert_called_once_with("Diebstahl", "stgb", 5, 0.5)

@@ -131,6 +131,119 @@ class TestGetLegalTexts:
         assert "Error querying legal texts" in response.json()["detail"]
 
 
+class TestGlobalSemanticSearch:
+    """Tests for GET /legal-texts/search endpoint (global search)"""
+
+    def test_global_search_without_code_returns_results(self, client_with_mocks, mock_repository, mock_embedding_service):
+        """Test global search returns results from all codes when no code specified"""
+        # Setup mocks
+        mock_embedding_service.generate_embeddings.return_value = [[0.1] * 2560]
+
+        mock_legal_text_bgb = LegalTextDB(
+            id=1,
+            text="Contract law text BGB",
+            code="bgb",
+            section="§ 1",
+            sub_section="1",
+            text_vector=[0.1] * 2560
+        )
+        mock_legal_text_stgb = LegalTextDB(
+            id=2,
+            text="Contract law text StGB",
+            code="stgb",
+            section="§ 1",
+            sub_section="1",
+            text_vector=[0.2] * 2560
+        )
+        mock_repository.semantic_search.return_value = [(mock_legal_text_bgb, 0.3), (mock_legal_text_stgb, 0.5)]
+
+        response = client_with_mocks.get("/legal-texts/search?q=Vertragsrecht")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["query"] == "Vertragsrecht"
+        assert data["code"] is None  # No code filter
+        assert data["count"] == 2
+        assert len(data["results"]) == 2
+        # Verify repository was called without code filter
+        mock_repository.semantic_search.assert_called_once()
+        call_args = mock_repository.semantic_search.call_args
+        assert call_args.kwargs["code"] is None
+
+    def test_global_search_with_code_returns_filtered_results(self, client_with_mocks, mock_repository, mock_embedding_service):
+        """Test global search filters by code when code is specified"""
+        # Setup mocks
+        mock_embedding_service.generate_embeddings.return_value = [[0.1] * 2560]
+
+        mock_legal_text = LegalTextDB(
+            id=1,
+            text="Contract law text",
+            code="bgb",
+            section="§ 1",
+            sub_section="1",
+            text_vector=[0.1] * 2560
+        )
+        mock_repository.semantic_search.return_value = [(mock_legal_text, 0.3)]
+
+        response = client_with_mocks.get("/legal-texts/search?q=Vertragsrecht&code=bgb")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["query"] == "Vertragsrecht"
+        assert data["code"] == "bgb"
+        assert data["count"] == 1
+        # Verify repository was called with code filter
+        mock_repository.semantic_search.assert_called_once()
+        call_args = mock_repository.semantic_search.call_args
+        assert call_args.kwargs["code"] == "bgb"
+
+    def test_global_search_with_custom_limit(self, client_with_mocks, mock_repository, mock_embedding_service):
+        """Test global search respects limit parameter"""
+        # Setup mocks
+        mock_embedding_service.generate_embeddings.return_value = [[0.1] * 2560]
+        mock_repository.semantic_search.return_value = []
+
+        response = client_with_mocks.get("/legal-texts/search?q=test&limit=5")
+
+        assert response.status_code == 200
+        # Verify repository was called with correct limit
+        mock_repository.semantic_search.assert_called_once()
+        call_args = mock_repository.semantic_search.call_args
+        assert call_args.kwargs["limit"] == 5
+
+    def test_global_search_with_custom_cutoff(self, client_with_mocks, mock_repository, mock_embedding_service):
+        """Test global search respects cutoff parameter"""
+        # Setup mocks
+        mock_embedding_service.generate_embeddings.return_value = [[0.1] * 2560]
+        mock_repository.semantic_search.return_value = []
+
+        response = client_with_mocks.get("/legal-texts/search?q=test&cutoff=0.5")
+
+        assert response.status_code == 200
+        # Verify repository was called with correct cutoff
+        call_args = mock_repository.semantic_search.call_args
+        assert call_args.kwargs["cutoff"] == 0.5
+
+    def test_global_search_handles_embedding_error(self, client_with_mocks, mock_repository, mock_embedding_service):
+        """Test global search handles embedding generation errors"""
+        mock_embedding_service.generate_embeddings.side_effect = Exception("Ollama connection error")
+
+        response = client_with_mocks.get("/legal-texts/search?q=test")
+
+        assert response.status_code == 500
+        assert "Error generating query embedding" in response.json()["detail"]
+
+    def test_global_search_handles_repository_error(self, client_with_mocks, mock_repository, mock_embedding_service):
+        """Test global search handles repository errors"""
+        mock_embedding_service.generate_embeddings.return_value = [[0.1] * 2560]
+        mock_repository.semantic_search.side_effect = Exception("Database error")
+
+        response = client_with_mocks.get("/legal-texts/search?q=test")
+
+        assert response.status_code == 500
+        assert "Error performing semantic search" in response.json()["detail"]
+
+
 class TestSemanticSearchLegalTexts:
     """Tests for GET /legal-texts/gesetze-im-internet/{code}/search endpoint"""
 

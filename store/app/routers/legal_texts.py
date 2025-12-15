@@ -107,7 +107,10 @@ class LegalTextSearchResponse(BaseModel):
     """Response model for semantic search results"""
 
     query: str
-    code: str
+    code: Optional[str] = Field(
+        default=None,
+        description="Legal code filter used in the search. None if searching all codes."
+    )
     count: int
     results: List[LegalTextSearchResult]
 
@@ -424,6 +427,134 @@ async def get_legal_texts(
         )
 
 
+@router.get("/search", response_model=LegalTextSearchResponse)
+async def global_semantic_search_legal_texts(
+    q: str = Query(..., description="Search query text", min_length=1),
+    code: Optional[str] = Query(
+        None,
+        description="Optional legal code identifier to filter search (e.g., 'bgb', 'stgb'). If not provided, searches all codes.",
+    ),
+    limit: int = Query(10, description="Maximum number of results", ge=1, le=100),
+    cutoff: float = Query(
+        0.7,
+        description="Maximum cosine distance threshold (0-2, lower is more similar). Only return results with distance <= cutoff.",
+        ge=0.0,
+        le=2.0,
+    ),
+    repository: LegalTextRepository = Depends(get_legal_text_repository),
+    embedding_service: EmbeddingService = Depends(get_embedding_service_dependency),
+):
+    """
+    Perform semantic search on legal texts using embeddings
+
+    This endpoint performs a semantic similarity search to find legal texts
+    that are most similar in meaning to the provided query text.
+
+    The search:
+    1. Generates an embedding for the query text using Ollama
+    2. Optionally filters texts by the specified legal code (if provided)
+    3. Finds the most similar texts using cosine distance
+    4. Filters out results above the cutoff threshold
+    5. Returns results sorted by similarity (most similar first)
+
+    **How similarity scores work:**
+    - Cosine distance ranges from 0 to 2
+    - 0 = identical vectors (most similar)
+    - Lower values = more similar
+    - Higher values = less similar
+    - The cutoff parameter filters out results with distance > cutoff
+
+    **Recommended cutoff values:**
+    - 0.3-0.5: Very strict, only highly similar results
+    - 0.6-0.7: Good balance (default: 0.7)
+    - 0.8-1.0: More permissive, includes somewhat related results
+
+    Examples:
+    - `/legal-texts/search?q=Vertragsrecht` - Search for contract law across all codes
+    - `/legal-texts/search?q=Vertragsrecht&code=bgb` - Search for contract law in BGB only
+    - `/legal-texts/search?q=Diebstahl&limit=5` - Find 5 most relevant theft-related texts
+    - `/legal-texts/search?q=Eigentum&cutoff=0.5` - Strict search for property-related texts
+
+    Args:
+        q: The search query text (required, minimum 1 character)
+        code: Optional legal code identifier to filter by (e.g., 'bgb', 'stgb')
+        limit: Maximum number of results to return (1-100, default: 10)
+        cutoff: Maximum cosine distance threshold (0-2, default: 0.7)
+        repository: Database repository (injected)
+        embedding_service: Embedding service (injected)
+
+    Returns:
+        Search results with similarity scores (empty array if no results match the cutoff threshold)
+
+    Raises:
+        HTTPException:
+            - 400: If query is invalid or code format is invalid
+            - 500: If embedding generation or search fails
+    """
+    try:
+        # Security: Validate code format if provided
+        validated_code: Optional[str] = None
+        if code is not None:
+            validated_code = validate_legal_code(code)
+
+        logger.info(
+            f"Global semantic search - code: {validated_code}, query: '{q}', limit: {limit}, cutoff: {cutoff}"
+        )
+
+        # Step 1: Generate embedding for the search query
+        try:
+            query_embeddings = await embedding_service.generate_embeddings([q])
+            query_embedding = query_embeddings[0]
+        except Exception as e:
+            logger.error(f"Error generating query embedding: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error generating query embedding: {str(e)}. Make sure Ollama is running.",
+            )
+
+        logger.info(f"Generated query embedding with dimension {len(query_embedding)}")
+
+        # Step 2: Perform semantic search with optional code filter
+        search_results = await repository.semantic_search(
+            query_embedding=query_embedding,
+            code=validated_code,
+            limit=limit,
+            cutoff=cutoff,
+        )
+
+        # Step 3: Convert to response models
+        results: List[LegalTextSearchResult] = []
+        for legal_text, distance in search_results:
+            result = LegalTextSearchResult(
+                text=str(legal_text.text),
+                code=str(legal_text.code),
+                section=str(legal_text.section),
+                sub_section=str(legal_text.sub_section),
+                similarity_score=float(distance),
+            )
+            results.append(result)
+
+        code_info = f"code {validated_code}" if validated_code else "all codes"
+        logger.info(f"Found {len(results)} results for query '{q}' in {code_info}")
+
+        return LegalTextSearchResponse(
+            query=q,
+            code=validated_code,
+            count=len(results),
+            results=results,
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+
+    except Exception as e:
+        logger.error(f"Error performing semantic search: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Error performing semantic search: {str(e)}"
+        )
+
+
 @router.get(
     "/gesetze-im-internet/{code}/search", response_model=LegalTextSearchResponse
 )
@@ -441,10 +572,13 @@ async def semantic_search_legal_texts(
     embedding_service: EmbeddingService = Depends(get_embedding_service_dependency),
 ):
     """
-    Perform semantic search on legal texts using embeddings
+    Perform semantic search on legal texts using embeddings (code-specific)
 
     This endpoint performs a semantic similarity search to find legal texts
-    that are most similar in meaning to the provided query text.
+    that are most similar in meaning to the provided query text, filtered by
+    a specific legal code.
+
+    Note: For searching across all codes, use /legal-texts/search instead.
 
     The search:
     1. Generates an embedding for the query text using Ollama
@@ -466,9 +600,9 @@ async def semantic_search_legal_texts(
     - 0.8-1.0: More permissive, includes somewhat related results
 
     Examples:
-    - `/legal-texts/bgb/search?q=Vertragsrecht` - Search for contract law in BGB (default cutoff: 0.7)
-    - `/legal-texts/stgb/search?q=Diebstahl&limit=5` - Find 5 most relevant theft-related texts
-    - `/legal-texts/bgb/search?q=Eigentum&cutoff=0.5` - Strict search for property-related texts
+    - `/legal-texts/gesetze-im-internet/bgb/search?q=Vertragsrecht` - Search for contract law in BGB (default cutoff: 0.7)
+    - `/legal-texts/gesetze-im-internet/stgb/search?q=Diebstahl&limit=5` - Find 5 most relevant theft-related texts
+    - `/legal-texts/gesetze-im-internet/bgb/search?q=Eigentum&cutoff=0.5` - Strict search for property-related texts
 
     Args:
         code: The legal code identifier (e.g., 'bgb', 'stgb')
