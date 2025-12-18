@@ -42,8 +42,8 @@ class LegalTextDB(Base):
     text = Column(Text, nullable=False)
     text_vector = Column(Vector(2560), nullable=False)  # type: ignore
     code = Column(String(100), nullable=False, index=True)
-    section = Column(String(50), nullable=False, index=True)
-    sub_section = Column(String(50), nullable=False)
+    section = Column(String(255), nullable=False, index=True)
+    sub_section = Column(String(255), nullable=False)
 
 
 class Scraper(ABC):
