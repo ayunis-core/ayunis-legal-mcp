@@ -107,16 +107,16 @@ A comprehensive system for searching and analyzing German legal texts using vect
 - Ollama (local or remote endpoint for embeddings)
 - Git
 
-> ⚠️ **Important: Required Ollama Model**
+> ⚠️ **Important: Ollama Embedding Model**
 >
-> This project uses a **hardcoded embedding model**: `ryanshillington/Qwen3-Embedding-4B:latest`
+> By default, this project uses the embedding model: `ryanshillington/Qwen3-Embedding-4B:latest`
 >
-> You must pull this specific model before importing legal texts:
+> You must pull this model (or your configured alternative) before importing legal texts:
 > ```bash
 > ollama pull ryanshillington/Qwen3-Embedding-4B:latest
 > ```
 >
-> The model produces 2560-dimensional vectors, and changing the model would require database schema modifications and re-importing all legal texts.
+> You can use a different model by setting the `OLLAMA_EMBEDDING_MODEL` environment variable, but **the model must produce 2560-dimensional vectors**. Using a model with different dimensions will cause errors, as the database schema is fixed at 2560 dimensions. Changing to a model with different dimensions would require database schema modifications and re-importing all legal texts.
 
 ### 1. Clone and Setup
 
@@ -342,12 +342,13 @@ The application uses a `.env` file for configuration. See `.env.example` for a t
 # Ollama Configuration
 OLLAMA_BASE_URL=https://your-ollama-endpoint.com
 OLLAMA_AUTH_TOKEN=your-auth-token-here
+OLLAMA_EMBEDDING_MODEL=ryanshillington/Qwen3-Embedding-4B:latest  # Optional, this is the default
 
 # PostgreSQL Configuration
 POSTGRES_HOST=postgres  # Use 'postgres' in Docker, 'localhost' for local dev
 ```
 
-> **Note:** While the Ollama endpoint URL is configurable, the embedding model (`ryanshillington/Qwen3-Embedding-4B:latest`) is currently hardcoded in `store/app/embedding.py`. Ensure your Ollama instance has this model available.
+> **Note:** The `OLLAMA_EMBEDDING_MODEL` variable allows you to use a different embedding model. However, **any alternative model must produce 2560-dimensional vectors** to be compatible with the database schema. The default model (`ryanshillington/Qwen3-Embedding-4B:latest`) is recommended.
 
 ### Additional Configuration (set in docker-compose.yml)
 

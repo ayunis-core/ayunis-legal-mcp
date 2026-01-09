@@ -42,8 +42,8 @@ migrate: ## Run database migrations
 import-bgb: ## Import German Civil Code (BGB)
 	curl -X POST http://localhost:8000/legal-texts/gesetze-im-internet/bgb
 
-test: ## Run tests
-	docker-compose exec store-api pytest
+test: ## Run tests (locally, no Docker required)
+	cd store && python -m pytest tests/ -v
 
 shell-store: ## Open shell in store API container
 	docker-compose exec store-api /bin/bash

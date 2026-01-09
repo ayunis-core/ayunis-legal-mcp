@@ -9,8 +9,7 @@ from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
-# Model configuration (constant across environments)
-MODEL = "ryanshillington/Qwen3-Embedding-4B:latest"
+# Default embedding dimension (must match the model output)
 EMBEDDING_DIMENSION = 2560
 
 
@@ -26,7 +25,7 @@ class EmbeddingService:
         Args:
             settings: Application settings containing Ollama configuration
         """
-        self.model = MODEL
+        self.model = settings.ollama_embedding_model
         self.settings = settings
 
         if settings.ollama_auth_token and settings.ollama_auth_token != "":

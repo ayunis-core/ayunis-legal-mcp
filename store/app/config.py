@@ -48,6 +48,10 @@ class Settings(BaseSettings):
         le=500,
         description="Number of texts to embed per request to Ollama (affects memory usage)",
     )
+    ollama_embedding_model: str = Field(
+        default="ryanshillington/Qwen3-Embedding-4B:latest",
+        description="Ollama embedding model name. Must produce 2560-dimensional vectors.",
+    )
 
 
 @lru_cache
