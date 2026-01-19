@@ -40,7 +40,10 @@ class LegalTextResult(BaseModel):
 @mcp.tool()
 async def search_legal_texts(
     query: str = Field(description="The search query text"),
-    code: str = Field(description="Legal code identifier (e.g., 'bgb', 'stgb')"),
+    code: Optional[str] = Field(
+        default=None,
+        description="Optional legal code identifier (e.g., 'bgb', 'stgb'). If not provided, searches all codes."
+    ),
     limit: int = Field(default=5, description="Maximum number of results", ge=1, le=20),
     cutoff: float = Field(
         default=0.7,
@@ -55,9 +58,12 @@ async def search_legal_texts(
     Searches through legal codes using semantic similarity to find relevant
     sections based on the query text. Lower similarity scores indicate better matches.
     
+    If no code is provided, searches across all available legal codes in the database.
+    
     Args:
         query: Natural language search query
-        code: Legal code to search (bgb=Civil Code, stgb=Criminal Code)
+        code: Optional legal code to search (bgb=Civil Code, stgb=Criminal Code). 
+              If not provided, searches all codes.
         limit: Maximum number of results to return (1-20)
         cutoff: Maximum similarity distance threshold (0-2)
     
@@ -66,13 +72,21 @@ async def search_legal_texts(
     """
     try:
         async with httpx.AsyncClient() as client:
+            # Build params - always include query, limit, cutoff
+            params = {
+                "q": query,
+                "limit": limit,
+                "cutoff": cutoff,
+            }
+            
+            # Add code to params if provided (for the global search endpoint)
+            if code is not None:
+                params["code"] = code
+            
+            # Use the global search endpoint which accepts optional code parameter
             response = await client.get(
-                f"{API_BASE_URL}/legal-texts/gesetze-im-internet/{code}/search",
-                params={
-                    "q": query,
-                    "limit": limit,
-                    "cutoff": cutoff,
-                },
+                f"{API_BASE_URL}/legal-texts/search",
+                params=params,
                 timeout=30.0,
             )
             response.raise_for_status()
