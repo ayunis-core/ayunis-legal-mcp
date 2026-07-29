@@ -52,7 +52,7 @@ shell-mcp: ## Open shell in MCP server container
 	docker-compose exec mcp-server /bin/bash
 
 shell-db: ## Open PostgreSQL shell
-	docker-compose exec postgres psql -U legal_mcp -d legal_mcp_db
+	docker-compose exec postgres psql -U postgres -d legal_mcp_db
 
 dev: ## Start development environment (with live reload)
 	docker-compose up

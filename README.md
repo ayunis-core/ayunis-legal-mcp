@@ -144,7 +144,7 @@ docker-compose ps
 
 This will start:
 
-- **PostgreSQL** (port 5432) - Database with pgvector extension
+- **PostgreSQL** (host port 5436) - Database with pgvector extension
 - **Store API** (port 8000) - FastAPI backend for legal texts
 - **MCP Server** (port 8001) - FastMCP server for AI assistants
 
@@ -346,18 +346,30 @@ OLLAMA_EMBEDDING_MODEL=ryanshillington/Qwen3-Embedding-4B:latest  # Optional, th
 
 # PostgreSQL Configuration
 POSTGRES_HOST=postgres  # Use 'postgres' in Docker, 'localhost' for local dev
+POSTGRES_PORT=5432      # Use 5432 in Docker, 5436 for local dev (see note below)
+POSTGRES_PASSWORD=postgres_password
+POSTGRES_DB=legal_mcp_db
 ```
+
+> **Note:** The database user is hard-coded to `postgres` in `store/app/database.py` — there is no
+> `POSTGRES_USER` setting. The container listens on 5432 but Compose publishes it on host port
+> **5436** (`5436:5432`), so running the API outside Docker against the Compose database requires
+> both `POSTGRES_HOST=localhost` and `POSTGRES_PORT=5436`.
 
 > **Note:** The `OLLAMA_EMBEDDING_MODEL` variable allows you to use a different embedding model. However, **any alternative model must produce 2560-dimensional vectors** to be compatible with the database schema. The default model (`ryanshillington/Qwen3-Embedding-4B:latest`) is recommended.
 
 ### Additional Configuration (set in docker-compose.yml)
 
 ```bash
-# Database URL (automatically constructed)
-DATABASE_URL=postgresql+asyncpg://legal_mcp:legal_mcp_password@postgres:5432/legal_mcp_db
-
 # MCP Server Configuration
 LEGAL_API_BASE_URL=http://store-api:8000
+```
+
+The database URL is not an environment variable. `store/app/database.py` builds it from the
+`POSTGRES_*` settings above, with the user fixed to `postgres` and the password URL-encoded:
+
+```
+postgresql+asyncpg://postgres:<POSTGRES_PASSWORD>@<POSTGRES_HOST>:<POSTGRES_PORT>/<POSTGRES_DB>
 ```
 
 ## API Documentation
@@ -372,13 +384,14 @@ Once running, access the interactive API documentation:
 #### Legal Texts
 
 - `POST /legal-texts/gesetze-im-internet/{book}` - Import legal text with embeddings
+- `GET /legal-texts/gesetze-im-internet/codes` - List codes already imported into the database
+- `GET /legal-texts/gesetze-im-internet/catalog` - List codes available for import from gii-toc.xml
 - `GET /legal-texts/gesetze-im-internet/{code}` - Query legal texts by code/section
 - `GET /legal-texts/gesetze-im-internet/{code}/search` - Semantic search with embeddings
 
 #### System
 
 - `GET /health` - Health check endpoint
-- `GET /` - API information
 
 ## MCP Server
 
@@ -395,10 +408,6 @@ The MCP Server exposes the following tools:
 - **`get_legal_section`** - Retrieve specific legal text sections
   - Parameters: `code`, `section`, `sub_section` (optional)
   - Returns: List of legal text sections matching the criteria
-
-- **`import_legal_code`** - Import a complete legal code from Gesetze im Internet
-  - Parameters: `code`
-  - Returns: Success message with import statistics
 
 - **`get_available_codes`** - Get all available legal codes in the database
   - Returns: List of legal code identifiers
@@ -514,8 +523,9 @@ The parser extracts:
    # Start only PostgreSQL
    docker-compose up postgres -d
 
-   # Update .env to use localhost
+   # Update .env to point at the published port on the host
    # POSTGRES_HOST=localhost
+   # POSTGRES_PORT=5436
    ```
 
 3. **Run migrations:**
