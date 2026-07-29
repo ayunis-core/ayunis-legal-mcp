@@ -384,13 +384,14 @@ Once running, access the interactive API documentation:
 #### Legal Texts
 
 - `POST /legal-texts/gesetze-im-internet/{book}` - Import legal text with embeddings
+- `GET /legal-texts/gesetze-im-internet/codes` - List codes already imported into the database
+- `GET /legal-texts/gesetze-im-internet/catalog` - List codes available for import from gii-toc.xml
 - `GET /legal-texts/gesetze-im-internet/{code}` - Query legal texts by code/section
 - `GET /legal-texts/gesetze-im-internet/{code}/search` - Semantic search with embeddings
 
 #### System
 
 - `GET /health` - Health check endpoint
-- `GET /` - API information
 
 ## MCP Server
 
