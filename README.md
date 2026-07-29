@@ -396,10 +396,6 @@ The MCP Server exposes the following tools:
   - Parameters: `code`, `section`, `sub_section` (optional)
   - Returns: List of legal text sections matching the criteria
 
-- **`import_legal_code`** - Import a complete legal code from Gesetze im Internet
-  - Parameters: `code`
-  - Returns: Success message with import statistics
-
 - **`get_available_codes`** - Get all available legal codes in the database
   - Returns: List of legal code identifiers
 
