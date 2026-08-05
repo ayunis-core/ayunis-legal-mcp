@@ -345,7 +345,7 @@ class TestExtractXmlFromZip:
             pass  # Create empty zip
         zip_bytes = zip_buffer.getvalue()
 
-        with pytest.raises(IndexError):
+        with pytest.raises(ValueError, match="contains no XML"):
             self.scraper._extract_xml_from_zip(zip_bytes)
 
 
@@ -369,7 +369,7 @@ class TestScrapeNetworkHandling:
                 pass
 
         mock_requests.get.assert_called_once_with(
-            "https://www.gesetze-im-internet.de/bgb/xml.zip"
+            "https://www.gesetze-im-internet.de/bgb/xml.zip", timeout=30
         )
 
     @patch("app.scrapers.gesetze_im_internet.gesetzte_im_internet_scraper.requests")

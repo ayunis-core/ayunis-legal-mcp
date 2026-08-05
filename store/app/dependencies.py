@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_async_session
 from app.embedding import EmbeddingService, get_embedding_service
 from app.repository import LegalTextRepository
+from app.import_service import LegalImportService
 from app.config import get_settings
 
 
@@ -54,3 +55,11 @@ async def get_embedding_service_dependency() -> EmbeddingService:
     """
     settings = get_settings()
     return get_embedding_service(settings)
+
+
+async def get_legal_import_service_dependency(
+    repository: LegalTextRepository = Depends(get_legal_text_repository),
+    embedding_service: EmbeddingService = Depends(get_embedding_service_dependency),
+) -> LegalImportService:
+    """Build the shared legal import orchestrator from request-scoped services."""
+    return LegalImportService(repository, embedding_service)

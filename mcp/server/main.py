@@ -32,6 +32,15 @@ class LegalTextResult(BaseModel):
     """Result from legal text query"""
     text: str
     code: str
+    source: str
+    jurisdiction: str
+    document_id: str
+    document_title: str
+    document_type: Optional[str] = None
+    source_url: Optional[str] = None
+    build_date: Optional[str] = None
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
     section: str
     sub_section: str
     similarity_score: Optional[float] = None
@@ -40,7 +49,19 @@ class LegalTextResult(BaseModel):
 @mcp.tool()
 async def search_legal_texts(
     query: str = Field(description="The search query text"),
-    code: str = Field(description="Legal code identifier (e.g., 'bgb', 'stgb')"),
+    jurisdiction: str = Field(
+        default="DE", description="ISO-style jurisdiction identifier"
+    ),
+    code: Optional[str] = Field(
+        default=None,
+        description="Optional legal code; omit to search the whole jurisdiction",
+    ),
+    source: Optional[str] = Field(
+        default=None, description="Optional legal source identifier"
+    ),
+    document_id: Optional[str] = Field(
+        default=None, description="Optional source-owned document identifier"
+    ),
     limit: int = Field(default=5, description="Maximum number of results", ge=1, le=20),
     cutoff: float = Field(
         default=0.7,
@@ -57,7 +78,8 @@ async def search_legal_texts(
     
     Args:
         query: Natural language search query
-        code: Legal code to search (bgb=Civil Code, stgb=Criminal Code)
+        jurisdiction: Jurisdiction to search (DE=federal Germany)
+        code: Optional legal abbreviation filter
         limit: Maximum number of results to return (1-20)
         cutoff: Maximum similarity distance threshold (0-2)
     
@@ -66,13 +88,21 @@ async def search_legal_texts(
     """
     try:
         async with httpx.AsyncClient() as client:
+            params = {
+                "q": query,
+                "jurisdiction": jurisdiction,
+                "limit": limit,
+                "cutoff": cutoff,
+            }
+            if code:
+                params["code"] = code
+            if source:
+                params["source"] = source
+            if document_id:
+                params["document_id"] = document_id
             response = await client.get(
-                f"{API_BASE_URL}/legal-texts/gesetze-im-internet/{code}/search",
-                params={
-                    "q": query,
-                    "limit": limit,
-                    "cutoff": cutoff,
-                },
+                f"{API_BASE_URL}/legal-texts/search",
+                params=params,
                 timeout=30.0,
             )
             response.raise_for_status()
@@ -82,6 +112,15 @@ async def search_legal_texts(
                 LegalTextResult(
                     text=result["text"],
                     code=result["code"],
+                    source=result["source"],
+                    jurisdiction=result["jurisdiction"],
+                    document_id=result["document_id"],
+                    document_title=result["document_title"],
+                    document_type=result.get("document_type"),
+                    source_url=result.get("source_url"),
+                    build_date=result.get("build_date"),
+                    valid_from=result.get("valid_from"),
+                    valid_to=result.get("valid_to"),
                     section=result["section"],
                     sub_section=result["sub_section"],
                     similarity_score=result.get("similarity_score"),
@@ -100,6 +139,15 @@ async def search_legal_texts(
 async def get_legal_section(
     code: str = Field(description="Legal code identifier (e.g., 'bgb', 'stgb')"),
     section: str = Field(description="Section identifier (e.g., '§ 1', 'Art 1')"),
+    jurisdiction: str = Field(
+        default="DE", description="ISO-style jurisdiction identifier"
+    ),
+    source: Optional[str] = Field(
+        default=None, description="Optional legal source identifier"
+    ),
+    document_id: Optional[str] = Field(
+        default=None, description="Optional source-owned document identifier"
+    ),
     sub_section: Optional[str] = Field(
         default=None,
         description="Optional sub-section identifier (e.g., '1', '2a')",
@@ -121,12 +169,20 @@ async def get_legal_section(
     """
     try:
         async with httpx.AsyncClient() as client:
-            params = {"section": section}
+            params = {
+                "code": code,
+                "section": section,
+                "jurisdiction": jurisdiction,
+            }
             if sub_section:
                 params["sub_section"] = sub_section
+            if source:
+                params["source"] = source
+            if document_id:
+                params["document_id"] = document_id
             
             response = await client.get(
-                f"{API_BASE_URL}/legal-texts/gesetze-im-internet/{code}",
+                f"{API_BASE_URL}/legal-texts",
                 params=params,
                 timeout=30.0,
             )
@@ -137,6 +193,15 @@ async def get_legal_section(
                 LegalTextResult(
                     text=result["text"],
                     code=result["code"],
+                    source=result["source"],
+                    jurisdiction=result["jurisdiction"],
+                    document_id=result["document_id"],
+                    document_title=result["document_title"],
+                    document_type=result.get("document_type"),
+                    source_url=result.get("source_url"),
+                    build_date=result.get("build_date"),
+                    valid_from=result.get("valid_from"),
+                    valid_to=result.get("valid_to"),
                     section=result["section"],
                     sub_section=result["sub_section"],
                 )
@@ -151,7 +216,14 @@ async def get_legal_section(
 
 
 @mcp.tool()
-async def get_available_codes() -> List[str]:
+async def get_available_codes(
+    jurisdiction: str = Field(
+        default="DE", description="ISO-style jurisdiction identifier"
+    ),
+    source: Optional[str] = Field(
+        default=None, description="Optional legal source identifier"
+    ),
+) -> List[str]:
     """
     Get all available legal codes in the database.
 
@@ -163,8 +235,12 @@ async def get_available_codes() -> List[str]:
     """
     try:
         async with httpx.AsyncClient() as client:
+            params = {"jurisdiction": jurisdiction}
+            if source:
+                params["source"] = source
             response = await client.get(
-                f"{API_BASE_URL}/legal-texts/gesetze-im-internet/codes",
+                f"{API_BASE_URL}/legal-texts/codes",
+                params=params,
                 timeout=30.0,
             )
             response.raise_for_status()
@@ -183,4 +259,3 @@ async def get_available_codes() -> List[str]:
 if __name__ == "__main__":
     # Run with HTTP transport for network accessibility
     mcp.run(transport="http", host="0.0.0.0", port=8001)
-

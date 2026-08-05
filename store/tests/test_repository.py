@@ -9,10 +9,31 @@ from app.models import LegalTextDB
 pytestmark = pytest.mark.unit
 
 
+def legal_text_db(**overrides):
+    values = {
+        "text": "Test text",
+        "text_vector": [0.1] * 2560,
+        "code": "bgb",
+        "source": "gesetze-im-internet",
+        "jurisdiction": "DE",
+        "document_id": "bgb",
+        "document_title": "Bürgerliches Gesetzbuch",
+        "source_url": "https://www.gesetze-im-internet.de/bgb/xml.zip",
+        "content_hash": "a" * 64,
+        "section": "§ 1",
+        "sub_section": "1",
+    }
+    values.update(overrides)
+    return LegalTextDB(**values)
+
+
 @pytest.fixture
 def mock_session():
     """Create a mock async session"""
-    session = AsyncMock()
+    session = MagicMock()
+    session.execute = AsyncMock()
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
     return session
 
 
@@ -46,6 +67,17 @@ class TestLegalTextFilter:
         assert filter.section == "§ 1"
         assert filter.sub_section == "1"
 
+    def test_filter_with_document_identity(self):
+        filter = LegalTextFilter(
+            source="state-source",
+            jurisdiction="DE-BY",
+            document_id="opaque-42",
+            code="shared",
+        )
+        assert filter.source == "state-source"
+        assert filter.jurisdiction == "DE-BY"
+        assert filter.document_id == "opaque-42"
+
     def test_filter_rejects_sub_section_without_section(self):
         """Test that sub_section without section raises validation error"""
         with pytest.raises(ValueError, match="sub_section filter can only be used when section filter is also provided"):
@@ -62,7 +94,7 @@ class TestLegalTextRepository:
         mock_result = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = [
-            LegalTextDB(id=1, text="Test", code="bgb", section="§ 1", sub_section="1", text_vector=[0.1] * 2560)
+            legal_text_db(id=1, text="Test")
         ]
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
@@ -83,7 +115,7 @@ class TestLegalTextRepository:
         mock_result = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = [
-            LegalTextDB(id=1, text="Test", code="bgb", section="§ 1", sub_section="1", text_vector=[0.1] * 2560)
+            legal_text_db(id=1, text="Test")
         ]
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
@@ -119,7 +151,7 @@ class TestLegalTextRepository:
     async def test_add_legal_text(self, repository, mock_session):
         """Test adding a single legal text"""
         # Setup
-        legal_text = LegalTextDB(
+        legal_text = legal_text_db(
             text="Test text",
             code="bgb",
             section="§ 1",
@@ -152,14 +184,14 @@ class TestLegalTextRepository:
         """Test adding multiple legal texts in batch"""
         # Setup
         legal_texts = [
-            LegalTextDB(
+            legal_text_db(
                 text="Text 1",
                 code="bgb",
                 section="§ 1",
                 sub_section="1",
                 text_vector=[0.1] * 2560
             ),
-            LegalTextDB(
+            legal_text_db(
                 text="Text 2",
                 code="bgb",
                 section="§ 2",
@@ -228,10 +260,26 @@ class TestLegalTextRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_get_content_hashes_uses_document_scoped_keys(
+        self, repository, mock_session
+    ):
+        mock_result = MagicMock()
+        mock_result.all.return_value = [("§ 1", "1", "a" * 64)]
+        mock_session.execute.return_value = mock_result
+
+        hashes = await repository.get_content_hashes(
+            source="state-source",
+            jurisdiction="DE-BY",
+            document_id="opaque-42",
+        )
+
+        assert hashes == {("§ 1", "1"): "a" * 64}
+
+    @pytest.mark.asyncio
     async def test_semantic_search_with_cutoff(self, repository, mock_session):
         """Test semantic search with cutoff threshold"""
         # Setup mock
-        mock_legal_text = LegalTextDB(
+        mock_legal_text = legal_text_db(
             id=1,
             text="Test text",
             code="bgb",
@@ -262,7 +310,7 @@ class TestLegalTextRepository:
     async def test_semantic_search_without_cutoff(self, repository, mock_session):
         """Test semantic search without cutoff threshold"""
         # Setup mock
-        mock_legal_text = LegalTextDB(
+        mock_legal_text = legal_text_db(
             id=1,
             text="Test text",
             code="bgb",

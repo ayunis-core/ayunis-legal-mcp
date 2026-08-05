@@ -2,10 +2,10 @@
 
 from typing import Optional, List, Tuple, Sequence, Any, Dict
 from pydantic import BaseModel, model_validator
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
-from app.models import LegalTextDB
+from app.models import LegalDocumentMetadata, LegalTextDB
 
 
 class LegalTextFilter(BaseModel):
@@ -13,11 +13,16 @@ class LegalTextFilter(BaseModel):
     Filter for querying legal texts
 
     Rules:
-    - code: Optional, typically used to filter by legal code
+    - jurisdiction: Optional ISO-style jurisdiction filter
+    - source/document_id: Optional source-owned document identity
+    - code: Optional human-facing legal abbreviation
     - section: Optional, filters by section identifier
     - sub_section: Optional, but can only be used when section is also provided
     """
 
+    source: Optional[str] = None
+    jurisdiction: Optional[str] = None
+    document_id: Optional[str] = None
     code: Optional[str] = None
     section: Optional[str] = None
     sub_section: Optional[str] = None
@@ -58,7 +63,15 @@ class LegalTextRepository:
         """
         query = select(LegalTextDB)
 
-        # Code is required
+        if filter.source:
+            query = query.filter(LegalTextDB.source == filter.source)
+
+        if filter.jurisdiction:
+            query = query.filter(LegalTextDB.jurisdiction == filter.jurisdiction)
+
+        if filter.document_id:
+            query = query.filter(LegalTextDB.document_id == filter.document_id)
+
         if filter.code:
             query = query.filter(LegalTextDB.code == filter.code)
 
@@ -89,7 +102,7 @@ class LegalTextRepository:
         """
         Add or update multiple legal texts in a batch (upsert)
 
-        If a legal text with the same (code, section, sub_section) combination
+        If a legal text with the same document-scoped section identity
         already exists, it will be updated with the new text and embedding.
         Otherwise, a new record will be inserted.
 
@@ -110,6 +123,16 @@ class LegalTextRepository:
                     "text": lt.text,
                     "text_vector": lt.text_vector,  # type: ignore
                     "code": lt.code,
+                    "source": lt.source,
+                    "jurisdiction": lt.jurisdiction,
+                    "document_id": lt.document_id,
+                    "document_title": lt.document_title,
+                    "document_type": lt.document_type,
+                    "source_url": lt.source_url,
+                    "build_date": lt.build_date,
+                    "valid_from": lt.valid_from,
+                    "valid_to": lt.valid_to,
+                    "content_hash": lt.content_hash,
                     "section": lt.section,
                     "sub_section": lt.sub_section,
                 }
@@ -121,10 +144,18 @@ class LegalTextRepository:
         # On conflict, update the text and text_vector
         # The constraint name matches what we created in the migration
         upsert_stmt = stmt.on_conflict_do_update(
-            constraint="uq_legal_texts_code_section_subsection",
+            constraint="uq_legal_texts_document_section_subsection",
             set_={
                 "text": stmt.excluded.text,
                 "text_vector": stmt.excluded.text_vector,
+                "code": stmt.excluded.code,
+                "document_title": stmt.excluded.document_title,
+                "document_type": stmt.excluded.document_type,
+                "source_url": stmt.excluded.source_url,
+                "build_date": stmt.excluded.build_date,
+                "valid_from": stmt.excluded.valid_from,
+                "valid_to": stmt.excluded.valid_to,
+                "content_hash": stmt.excluded.content_hash,
             },
         )
 
@@ -139,16 +170,68 @@ class LegalTextRepository:
         result = await self.session.execute(query)
         return len(list(result.scalars().all()))
 
-    async def get_available_codes(self) -> List[str]:
+    async def get_content_hashes(
+        self, source: str, jurisdiction: str, document_id: str
+    ) -> Dict[Tuple[str, str], str]:
+        """Return stored chunk hashes keyed by section identity."""
+        query = select(
+            LegalTextDB.section,
+            LegalTextDB.sub_section,
+            LegalTextDB.content_hash,
+        ).filter(
+            LegalTextDB.source == source,
+            LegalTextDB.jurisdiction == jurisdiction,
+            LegalTextDB.document_id == document_id,
+        )
+        result = await self.session.execute(query)
+        return {(row[0], row[1]): row[2] for row in result.all()}
+
+    async def update_document_metadata(
+        self, metadata: LegalDocumentMetadata
+    ) -> None:
+        """Refresh citation metadata on existing chunks without re-embedding them."""
+        statement = (
+            update(LegalTextDB)
+            .where(
+                LegalTextDB.source == metadata.source,
+                LegalTextDB.jurisdiction == metadata.jurisdiction,
+                LegalTextDB.document_id == metadata.document_id,
+            )
+            .values(
+                code=metadata.code,
+                document_title=metadata.document_title,
+                document_type=metadata.document_type,
+                source_url=metadata.source_url,
+                build_date=metadata.build_date,
+                valid_from=metadata.valid_from,
+                valid_to=metadata.valid_to,
+            )
+        )
+        await self.session.execute(statement)
+        await self.session.commit()
+
+    async def get_available_codes(
+        self,
+        jurisdiction: Optional[str] = None,
+        source: Optional[str] = None,
+    ) -> List[str]:
         """Get all unique legal codes available in the database"""
-        query = select(LegalTextDB.code).distinct().order_by(LegalTextDB.code)
+        query = select(LegalTextDB.code)
+        if jurisdiction:
+            query = query.filter(LegalTextDB.jurisdiction == jurisdiction)
+        if source:
+            query = query.filter(LegalTextDB.source == source)
+        query = query.distinct().order_by(LegalTextDB.code)
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
     async def semantic_search(
         self,
         query_embedding: Sequence[float],
-        code: str,
+        code: Optional[str] = None,
+        jurisdiction: str = "DE",
+        source: Optional[str] = None,
+        document_id: Optional[str] = None,
         limit: int = 10,
         cutoff: Optional[float] = None,
     ) -> List[Tuple[LegalTextDB, float]]:
@@ -160,7 +243,10 @@ class LegalTextRepository:
 
         Args:
             query_embedding: The embedding vector of the search query
-            code: The legal code to filter by (required)
+            code: Optional legal abbreviation filter
+            jurisdiction: Jurisdiction to search (default: federal Germany)
+            source: Optional source portal filter
+            document_id: Optional source document filter
             limit: Maximum number of results to return (default: 10)
             cutoff: Optional maximum cosine distance threshold (default: None)
                     Only return results with distance <= cutoff
@@ -185,10 +271,17 @@ class LegalTextRepository:
                 LegalTextDB,
                 distance_expr.label("distance"),
             )
-            .filter(LegalTextDB.code == code)
+            .filter(LegalTextDB.jurisdiction == jurisdiction)
             .order_by("distance")
             .limit(limit)
         )
+
+        if code:
+            query = query.filter(LegalTextDB.code == code)
+        if source:
+            query = query.filter(LegalTextDB.source == source)
+        if document_id:
+            query = query.filter(LegalTextDB.document_id == document_id)
 
         # Apply cutoff filter if specified
         if cutoff is not None:

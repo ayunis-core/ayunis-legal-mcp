@@ -40,6 +40,7 @@ A comprehensive system for searching and analyzing German legal texts using vect
 - 🔍 **Semantic Search** - Vector-based similarity search for legal texts
 - 📊 **Metadata Tracking** - Full document metadata and versioning
 - 📝 **RESTful API** - FastAPI with automatic documentation
+- 🌍 **Multi-jurisdiction model** - Source/document identity and jurisdiction-wide search
 - 🐳 **Docker Support** - Easy deployment with containerization
 
 ### MCP Server Features
@@ -180,6 +181,12 @@ curl "http://localhost:8000/legal-texts/gesetze-im-internet/rag_1?section=%C2%A7
 
 # Semantic search (requires embeddings)
 curl "http://localhost:8000/legal-texts/gesetze-im-internet/rag_1/search?q=Versicherung&limit=5"
+
+# Search all imported federal codes, or restrict by code/source/document
+curl "http://localhost:8000/legal-texts/search?q=Versicherung&jurisdiction=DE"
+
+# Source-independent exact lookup
+curl "http://localhost:8000/legal-texts?jurisdiction=DE&code=rag_1&section=%C2%A7%201"
 
 # Access interactive API documentation
 open http://localhost:8000/docs
@@ -372,8 +379,11 @@ Once running, access the interactive API documentation:
 #### Legal Texts
 
 - `POST /legal-texts/gesetze-im-internet/{book}` - Import legal text with embeddings
+- `GET /legal-texts` - Source-independent exact lookup with jurisdiction/source/document filters
+- `GET /legal-texts/search` - Jurisdiction search with an optional code filter
+- `GET /legal-texts/codes` - List imported codes by jurisdiction and optional source
 - `GET /legal-texts/gesetze-im-internet/{code}` - Query legal texts by code/section
-- `GET /legal-texts/gesetze-im-internet/{code}/search` - Semantic search with embeddings
+- `GET /legal-texts/gesetze-im-internet/{code}/search` - Compatible federal semantic search
 
 #### System
 
@@ -389,19 +399,16 @@ The MCP Server provides tools for AI assistants to interact with the legal text 
 The MCP Server exposes the following tools:
 
 - **`search_legal_texts`** - Perform semantic search on legal texts
-  - Parameters: `query`, `code`, `limit` (1-20), `cutoff` (0-2)
+  - Parameters: `query`, `jurisdiction`, optional `code`/`source`/`document_id`, `limit`, `cutoff`
   - Returns: List of matching legal text sections with similarity scores
 
 - **`get_legal_section`** - Retrieve specific legal text sections
-  - Parameters: `code`, `section`, `sub_section` (optional)
+  - Parameters: `code`, `section`, `jurisdiction`, optional `source`/`document_id`/`sub_section`
   - Returns: List of legal text sections matching the criteria
 
-- **`import_legal_code`** - Import a complete legal code from Gesetze im Internet
-  - Parameters: `code`
-  - Returns: Success message with import statistics
-
 - **`get_available_codes`** - Get all available legal codes in the database
-  - Returns: List of legal code identifiers
+  - Parameters: `jurisdiction`, optional `source`
+  - Returns: List of matching legal code identifiers
 
 ### Using the MCP Server
 

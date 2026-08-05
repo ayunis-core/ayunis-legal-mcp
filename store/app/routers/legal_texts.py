@@ -2,23 +2,31 @@
 Legal texts router - Endpoints for importing and querying German legal texts
 """
 
+import asyncio
 import logging
 import re
+from datetime import date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.scrapers import (
-    GesetzteImInternetScraper,
     GesetzteImInternetCatalog,
     CatalogFetchError,
 )
+from app.import_service import LegalImportService
 from app.repository import LegalTextRepository, LegalTextFilter
 from app.embedding import EmbeddingService
 from app.models import LegalTextDB
+from app.sources import (
+    GesetzeImInternetAdapter,
+    LegalSourceCatalogEntry,
+    SourceDocumentNotFound,
+)
 from app.dependencies import (
     get_legal_text_repository,
     get_embedding_service_dependency,
+    get_legal_import_service_dependency,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,11 +82,19 @@ class LegalTextResponse(BaseModel):
     id: int
     text: str
     code: str
+    source: str
+    jurisdiction: str
+    document_id: str
+    document_title: str
+    document_type: Optional[str] = None
+    source_url: Optional[str] = None
+    build_date: Optional[date] = None
+    valid_from: Optional[date] = None
+    valid_to: Optional[date] = None
     section: str
     sub_section: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LegalTextListResponse(BaseModel):
@@ -93,21 +109,30 @@ class LegalTextSearchResult(BaseModel):
 
     text: str
     code: str
+    source: str
+    jurisdiction: str
+    document_id: str
+    document_title: str
+    document_type: Optional[str] = None
+    source_url: Optional[str] = None
+    build_date: Optional[date] = None
+    valid_from: Optional[date] = None
+    valid_to: Optional[date] = None
     section: str
     sub_section: str
     similarity_score: float = Field(
         description="Cosine distance (0 = identical, lower is more similar)"
     )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LegalTextSearchResponse(BaseModel):
     """Response model for semantic search results"""
 
     query: str
-    code: str
+    jurisdiction: str
+    code: Optional[str] = None
     count: int
     results: List[LegalTextSearchResult]
 
@@ -117,6 +142,7 @@ class LegalTextImportResponse(BaseModel):
 
     message: str
     texts_imported: int
+    texts_updated: int
     code: str
 
 
@@ -146,8 +172,9 @@ class CatalogResponse(BaseModel):
 @router.post("/gesetze-im-internet/{book}", response_model=LegalTextImportResponse)
 async def import_legal_text(
     book: str,
-    repository: LegalTextRepository = Depends(get_legal_text_repository),
-    embedding_service: EmbeddingService = Depends(get_embedding_service_dependency),
+    import_service: LegalImportService = Depends(
+        get_legal_import_service_dependency
+    ),
 ):
     """
     Import a legal text from Gesetze im Internet
@@ -174,72 +201,47 @@ async def import_legal_text(
         book = validate_legal_code(book)
         logger.info(f"Starting import for legal code: {book}")
 
-        # Validation: Check if code exists in catalog
-        catalog_service = GesetzteImInternetCatalog()
+        adapter = GesetzeImInternetAdapter()
+        catalog_entry: Optional[LegalSourceCatalogEntry] = None
         try:
-            if not catalog_service.is_valid_code(book):
-                logger.warning(f"Code {book} not found in catalog")
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid legal code: {book}. Use /catalog endpoint to see available codes.",
-                )
+            catalog_entry = await asyncio.to_thread(adapter.get_catalog_entry, book)
+        except SourceDocumentNotFound:
+            logger.warning(f"Code {book} not found in catalog")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid legal code: {book}. Use /catalog endpoint to see available codes.",
+            )
         except CatalogFetchError as catalog_error:
-            # Graceful degradation: if catalog fetch fails, log and continue
             logger.warning(
                 f"Could not validate code against catalog: {str(catalog_error)}. Proceeding with import attempt."
             )
-
-        # Step 1: Scrape the legal texts
-        scraper = GesetzteImInternetScraper()
-        legal_texts = scraper.scrape(book)
-
-        if not legal_texts:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No legal texts found for code: {book}",
+            catalog_entry = LegalSourceCatalogEntry(
+                document_id=book,
+                code=book,
+                title=book,
+                source_url=f"https://www.gesetze-im-internet.de/{book}/xml.zip",
             )
-
-        logger.info(f"Scraped {len(legal_texts)} legal text sections")
-
-        # Step 2: Generate embeddings for all texts (batch processing)
-        logger.info("Generating embeddings...")
-        texts_to_embed = [lt.text for lt in legal_texts]
 
         try:
-            embeddings = await embedding_service.generate_embeddings(texts_to_embed)
+            result = await import_service.import_document(
+                adapter, book, catalog_entry=catalog_entry
+            )
+        except ValueError as error:
+            if str(error).startswith("No legal texts found"):
+                raise HTTPException(status_code=404, detail=str(error))
+            raise
         except Exception as e:
-            logger.error(f"Error generating embeddings: {str(e)}")
+            logger.error(f"Error importing source document: {str(e)}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Error generating embeddings: {str(e)}. Make sure Ollama is running and the model is available.",
+                detail=f"Error importing source document: {str(e)}",
             )
-
-        logger.info(f"Generated {len(embeddings)} embeddings")
-
-        # Step 3: Create database records with embeddings
-        legal_text_dbs: List[LegalTextDB] = []
-        for legal_text, embedding in zip(legal_texts, embeddings):
-            legal_text_db = LegalTextDB(
-                text=legal_text.text,
-                text_vector=embedding,
-                code=legal_text.code,
-                section=legal_text.section,
-                sub_section=legal_text.sub_section,
-            )
-            legal_text_dbs.append(legal_text_db)
-
-        # Step 4: Save to database in batch
-        logger.info("Saving to database...")
-        await repository.add_legal_texts_batch(legal_text_dbs)
-
-        logger.info(
-            f"Successfully imported {len(legal_text_dbs)} texts for code: {book}"
-        )
 
         return LegalTextImportResponse(
             message=f"Successfully imported legal texts for {book}",
-            texts_imported=len(legal_text_dbs),
-            code=book,
+            texts_imported=result.texts_imported,
+            texts_updated=result.texts_updated,
+            code=result.code,
         )
 
     except HTTPException:
@@ -253,8 +255,10 @@ async def import_legal_text(
         )
 
 
-@router.get("/gesetze-im-internet/codes", response_model=AvailableCodesResponse)
+@router.get("/codes", response_model=AvailableCodesResponse)
 async def get_available_codes(
+    jurisdiction: str = Query("DE", description="ISO-style jurisdiction"),
+    source: Optional[str] = Query(None, description="Optional source identifier"),
     repository: LegalTextRepository = Depends(get_legal_text_repository),
 ):
     """
@@ -272,7 +276,9 @@ async def get_available_codes(
     """
     try:
         logger.info("Fetching available legal codes")
-        codes = await repository.get_available_codes()
+        codes = await repository.get_available_codes(
+            jurisdiction=jurisdiction, source=source
+        )
         logger.info(f"Found {len(codes)} available legal codes")
         return AvailableCodesResponse(codes=codes)
 
@@ -281,6 +287,18 @@ async def get_available_codes(
         raise HTTPException(
             status_code=500, detail=f"Error fetching available codes: {str(e)}"
         )
+
+
+@router.get("/gesetze-im-internet/codes", response_model=AvailableCodesResponse)
+async def get_gesetze_im_internet_codes(
+    repository: LegalTextRepository = Depends(get_legal_text_repository),
+):
+    """Backward-compatible list of imported federal source codes."""
+    return await get_available_codes(
+        jurisdiction="DE",
+        source="gesetze-im-internet",
+        repository=repository,
+    )
 
 
 @router.get("/gesetze-im-internet/catalog", response_model=CatalogResponse)
@@ -322,6 +340,58 @@ async def get_importable_catalog():
     except Exception as e:
         logger.error(f"Error fetching catalog: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error fetching catalog: {str(e)}")
+
+
+@router.get("", response_model=LegalTextListResponse)
+async def query_legal_texts(
+    jurisdiction: str = Query("DE", description="ISO-style jurisdiction"),
+    source: Optional[str] = Query(None, description="Optional source identifier"),
+    document_id: Optional[str] = Query(
+        None, description="Optional source-owned document identifier"
+    ),
+    code: Optional[str] = Query(None, description="Optional legal abbreviation"),
+    section: Optional[str] = Query(None, description="Optional section identifier"),
+    sub_section: Optional[str] = Query(
+        None, description="Optional sub-section; requires section"
+    ),
+    repository: LegalTextRepository = Depends(get_legal_text_repository),
+):
+    """Query legal texts independently of their source portal."""
+    if code:
+        code = validate_legal_code(code)
+    if sub_section and not section:
+        raise HTTPException(
+            status_code=400,
+            detail="sub_section filter can only be used when section filter is also provided",
+        )
+    try:
+        legal_texts = await repository.get_legal_text(
+            LegalTextFilter(
+                jurisdiction=jurisdiction,
+                source=source,
+                document_id=document_id,
+                code=code,
+                section=section,
+                sub_section=sub_section,
+            )
+        )
+        if not legal_texts:
+            raise HTTPException(
+                status_code=404, detail="No legal texts found for the supplied filters"
+            )
+        return LegalTextListResponse(
+            count=len(legal_texts),
+            results=[LegalTextResponse.model_validate(lt) for lt in legal_texts],
+        )
+    except HTTPException:
+        raise
+    except ValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        logger.error("Error querying legal texts: %s", error, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Error querying legal texts: {error}"
+        )
 
 
 @router.get("/gesetze-im-internet/{code}", response_model=LegalTextListResponse)
@@ -383,6 +453,9 @@ async def get_legal_texts(
         # Build filter (Pydantic will also validate at this point)
         try:
             filter = LegalTextFilter(
+                source="gesetze-im-internet",
+                jurisdiction="DE",
+                document_id=code,
                 code=code,
                 section=section,
                 sub_section=sub_section,
@@ -424,12 +497,15 @@ async def get_legal_texts(
         )
 
 
-@router.get(
-    "/gesetze-im-internet/{code}/search", response_model=LegalTextSearchResponse
-)
+@router.get("/search", response_model=LegalTextSearchResponse)
 async def semantic_search_legal_texts(
-    code: str,
     q: str = Query(..., description="Search query text", min_length=1),
+    jurisdiction: str = Query("DE", description="ISO-style jurisdiction"),
+    code: Optional[str] = Query(None, description="Optional legal abbreviation"),
+    source: Optional[str] = Query(None, description="Optional source identifier"),
+    document_id: Optional[str] = Query(
+        None, description="Optional source-owned document identifier"
+    ),
     limit: int = Query(10, description="Maximum number of results", ge=1, le=100),
     cutoff: float = Query(
         0.7,
@@ -487,10 +563,15 @@ async def semantic_search_legal_texts(
             - 500: If embedding generation or search fails
     """
     try:
-        # Security: Validate code format to prevent SSRF/injection attacks
-        code = validate_legal_code(code)
+        if code:
+            code = validate_legal_code(code)
         logger.info(
-            f"Semantic search - code: {code}, query: '{q}', limit: {limit}, cutoff: {cutoff}"
+            "Semantic search - jurisdiction: %s, code: %s, query: %r, limit: %s, cutoff: %s",
+            jurisdiction,
+            code,
+            q,
+            limit,
+            cutoff,
         )
 
         # Step 1: Generate embedding for the search query
@@ -510,6 +591,9 @@ async def semantic_search_legal_texts(
         search_results = await repository.semantic_search(
             query_embedding=query_embedding,
             code=code,
+            jurisdiction=jurisdiction,
+            source=source,
+            document_id=document_id,
             limit=limit,
             cutoff=cutoff,
         )
@@ -520,16 +604,31 @@ async def semantic_search_legal_texts(
             result = LegalTextSearchResult(
                 text=str(legal_text.text),
                 code=str(legal_text.code),
+                source=str(legal_text.source),
+                jurisdiction=str(legal_text.jurisdiction),
+                document_id=str(legal_text.document_id),
+                document_title=str(legal_text.document_title),
+                document_type=legal_text.document_type,
+                source_url=legal_text.source_url,
+                build_date=legal_text.build_date,
+                valid_from=legal_text.valid_from,
+                valid_to=legal_text.valid_to,
                 section=str(legal_text.section),
                 sub_section=str(legal_text.sub_section),
                 similarity_score=float(distance),
             )
             results.append(result)
 
-        logger.info(f"Found {len(results)} results for query '{q}' in code {code}")
+        logger.info(
+            "Found %d results for query %r in jurisdiction %s",
+            len(results),
+            q,
+            jurisdiction,
+        )
 
         return LegalTextSearchResponse(
             query=q,
+            jurisdiction=jurisdiction,
             code=code,
             count=len(results),
             results=results,
@@ -544,3 +643,33 @@ async def semantic_search_legal_texts(
         raise HTTPException(
             status_code=500, detail=f"Error performing semantic search: {str(e)}"
         )
+
+
+@router.get(
+    "/gesetze-im-internet/{code}/search", response_model=LegalTextSearchResponse
+)
+async def semantic_search_gesetze_im_internet(
+    code: str,
+    q: str = Query(..., description="Search query text", min_length=1),
+    limit: int = Query(10, description="Maximum number of results", ge=1, le=100),
+    cutoff: float = Query(
+        0.7,
+        description="Maximum cosine distance threshold",
+        ge=0.0,
+        le=2.0,
+    ),
+    repository: LegalTextRepository = Depends(get_legal_text_repository),
+    embedding_service: EmbeddingService = Depends(get_embedding_service_dependency),
+):
+    """Backward-compatible semantic search for federal Gesetze-im-Internet."""
+    return await semantic_search_legal_texts(
+        q=q,
+        jurisdiction="DE",
+        code=code,
+        source="gesetze-im-internet",
+        document_id=code,
+        limit=limit,
+        cutoff=cutoff,
+        repository=repository,
+        embedding_service=embedding_service,
+    )

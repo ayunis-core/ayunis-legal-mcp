@@ -7,11 +7,36 @@ from fastapi.testclient import TestClient
 from fastapi import HTTPException
 
 from app.main import app
-from app.models import LegalTextDB, LegalText
+from app.models import LegalTextDB
+from app.import_service import LegalImportResult, LegalImportService
 from app.repository import LegalTextRepository
-from app.dependencies import get_legal_text_repository, get_embedding_service_dependency
+from app.sources import LegalSourceCatalogEntry, SourceDocumentNotFound
+from app.dependencies import (
+    get_embedding_service_dependency,
+    get_legal_import_service_dependency,
+    get_legal_text_repository,
+)
 
 pytestmark = pytest.mark.unit
+
+
+def legal_text_db(**overrides):
+    values = {
+        "id": 1,
+        "text": "Test text",
+        "text_vector": [0.1] * 2560,
+        "code": "bgb",
+        "source": "gesetze-im-internet",
+        "jurisdiction": "DE",
+        "document_id": "bgb",
+        "document_title": "Bürgerliches Gesetzbuch",
+        "source_url": "https://www.gesetze-im-internet.de/bgb/xml.zip",
+        "content_hash": "a" * 64,
+        "section": "§ 1",
+        "sub_section": "1",
+    }
+    values.update(overrides)
+    return LegalTextDB(**values)
 
 
 @pytest.fixture
@@ -29,10 +54,16 @@ def mock_embedding_service():
 
 
 @pytest.fixture
-def client_with_mocks(mock_repository, mock_embedding_service):
+def mock_import_service():
+    return AsyncMock(spec=LegalImportService)
+
+
+@pytest.fixture
+def client_with_mocks(mock_repository, mock_embedding_service, mock_import_service):
     """Create a test client with mocked dependencies"""
     app.dependency_overrides[get_legal_text_repository] = lambda: mock_repository
     app.dependency_overrides[get_embedding_service_dependency] = lambda: mock_embedding_service
+    app.dependency_overrides[get_legal_import_service_dependency] = lambda: mock_import_service
     client = TestClient(app)
     yield client
     app.dependency_overrides.clear()
@@ -71,7 +102,7 @@ class TestGetLegalTexts:
 
     def test_get_legal_texts_by_code(self, client_with_mocks, mock_repository):
         """Test getting legal texts by code only"""
-        mock_legal_text = LegalTextDB(
+        mock_legal_text = legal_text_db(
             id=1,
             text="Test text",
             code="bgb",
@@ -91,7 +122,7 @@ class TestGetLegalTexts:
 
     def test_get_legal_texts_by_code_and_section(self, client_with_mocks, mock_repository):
         """Test getting legal texts filtered by code and section"""
-        mock_legal_text = LegalTextDB(
+        mock_legal_text = legal_text_db(
             id=1,
             text="Test text",
             code="bgb",
@@ -139,7 +170,7 @@ class TestSemanticSearchLegalTexts:
         # Setup mocks
         mock_embedding_service.generate_embeddings.return_value = [[0.1] * 2560]
 
-        mock_legal_text = LegalTextDB(
+        mock_legal_text = legal_text_db(
             id=1,
             text="Contract law text",
             code="bgb",
@@ -219,148 +250,130 @@ class TestSemanticSearchLegalTexts:
         assert response.status_code == 500
         assert "Error performing semantic search" in response.json()["detail"]
 
+    def test_jurisdiction_wide_search_without_code(
+        self, client_with_mocks, mock_repository, mock_embedding_service
+    ):
+        mock_embedding_service.generate_embeddings.return_value = [[0.1] * 2560]
+        mock_repository.semantic_search.return_value = [
+            (legal_text_db(jurisdiction="DE-BY", source="state-source"), 0.2)
+        ]
+
+        response = client_with_mocks.get(
+            "/legal-texts/search?q=Bauordnung&jurisdiction=DE-BY"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["code"] is None
+        assert response.json()["results"][0]["jurisdiction"] == "DE-BY"
+        call = mock_repository.semantic_search.call_args.kwargs
+        assert call["jurisdiction"] == "DE-BY"
+        assert call["code"] is None
+
+
+class TestGenericLegalTextQuery:
+    def test_filters_by_document_identity(self, client_with_mocks, mock_repository):
+        mock_repository.get_legal_text.return_value = [
+            legal_text_db(
+                source="state-source",
+                jurisdiction="DE-BY",
+                document_id="opaque-42",
+                code="shared",
+            )
+        ]
+
+        response = client_with_mocks.get(
+            "/legal-texts?jurisdiction=DE-BY&source=state-source"
+            "&document_id=opaque-42&code=shared&section=%C2%A7%201"
+        )
+
+        assert response.status_code == 200
+        result = response.json()["results"][0]
+        assert result["jurisdiction"] == "DE-BY"
+        assert result["document_id"] == "opaque-42"
+        used_filter = mock_repository.get_legal_text.call_args.args[0]
+        assert used_filter.source == "state-source"
+        assert used_filter.jurisdiction == "DE-BY"
+        assert used_filter.document_id == "opaque-42"
+
 
 class TestImportLegalText:
     """Tests for POST /legal-texts/gesetze-im-internet/{book} endpoint"""
 
-    def test_import_legal_text_success(self, client_with_mocks, mock_repository, mock_embedding_service):
+    def test_import_legal_text_success(self, client_with_mocks, mock_import_service):
         """Test successful legal text import"""
-        # Setup mocks
-        legal_texts = [
-            LegalText(text="Text 1", code="bgb", section="§ 1", sub_section="1"),
-            LegalText(text="Text 2", code="bgb", section="§ 2", sub_section="1"),
-        ]
-        mock_embedding_service.generate_embeddings.return_value = [[0.1] * 2560, [0.2] * 2560]
-        mock_repository.add_legal_texts_batch.return_value = []
-
-        with patch('app.routers.legal_texts.GesetzteImInternetCatalog') as mock_catalog_class, \
-             patch('app.routers.legal_texts.GesetzteImInternetScraper') as mock_scraper_class:
-
-            # Mock catalog validation to pass
-            mock_catalog = MagicMock()
-            mock_catalog.is_valid_code.return_value = True
-            mock_catalog_class.return_value = mock_catalog
-
-            # Mock scraper
-            mock_scraper = MagicMock()
-            mock_scraper.scrape.return_value = legal_texts
-            mock_scraper_class.return_value = mock_scraper
-
+        mock_import_service.import_document.return_value = LegalImportResult(
+            document_id="bgb", code="bgb", texts_imported=2, texts_updated=2
+        )
+        with patch("app.routers.legal_texts.GesetzeImInternetAdapter") as adapter_class:
+            adapter_class.return_value.get_catalog_entry.return_value = LegalSourceCatalogEntry(
+                document_id="bgb",
+                code="bgb",
+                title="Bürgerliches Gesetzbuch",
+                source_url="https://www.gesetze-im-internet.de/bgb/xml.zip",
+            )
             response = client_with_mocks.post("/legal-texts/gesetze-im-internet/bgb")
-
             assert response.status_code == 200
             data = response.json()
             assert data["code"] == "bgb"
             assert data["texts_imported"] == 2
+            assert data["texts_updated"] == 2
             assert "Successfully imported" in data["message"]
 
-    def test_import_legal_text_handles_scraping_error(self, client_with_mocks, mock_repository, mock_embedding_service):
+    def test_import_legal_text_handles_scraping_error(self, client_with_mocks, mock_import_service):
         """Test import handles scraping errors"""
-        with patch('app.routers.legal_texts.GesetzteImInternetCatalog') as mock_catalog_class, \
-             patch('app.routers.legal_texts.GesetzteImInternetScraper') as mock_scraper_class:
-
-            # Mock catalog validation to pass
-            mock_catalog = MagicMock()
-            mock_catalog.is_valid_code.return_value = True
-            mock_catalog_class.return_value = mock_catalog
-
-            # Mock scraper to fail
-            mock_scraper = MagicMock()
-            mock_scraper.scrape.side_effect = Exception("Network error")
-            mock_scraper_class.return_value = mock_scraper
-
+        mock_import_service.import_document.side_effect = Exception("Network error")
+        with patch("app.routers.legal_texts.GesetzeImInternetAdapter") as adapter_class:
+            adapter_class.return_value.get_catalog_entry.return_value = MagicMock()
             response = client_with_mocks.post("/legal-texts/gesetze-im-internet/bgb")
-
             assert response.status_code == 500
-            assert "Error importing document" in response.json()["detail"]
+            assert "Error importing source document" in response.json()["detail"]
 
-    def test_import_legal_text_returns_404_when_no_texts_found(self, client_with_mocks, mock_repository, mock_embedding_service):
+    def test_import_legal_text_returns_404_when_no_texts_found(self, client_with_mocks, mock_import_service):
         """Test import returns 404 when scraper finds no texts"""
-        with patch('app.routers.legal_texts.GesetzteImInternetCatalog') as mock_catalog_class, \
-             patch('app.routers.legal_texts.GesetzteImInternetScraper') as mock_scraper_class:
-
-            # Mock catalog validation to pass
-            mock_catalog = MagicMock()
-            mock_catalog.is_valid_code.return_value = True
-            mock_catalog_class.return_value = mock_catalog
-
-            # Mock scraper to return empty list
-            mock_scraper = MagicMock()
-            mock_scraper.scrape.return_value = []
-            mock_scraper_class.return_value = mock_scraper
-
+        mock_import_service.import_document.side_effect = ValueError(
+            "No legal texts found for document: nonexistent"
+        )
+        with patch("app.routers.legal_texts.GesetzeImInternetAdapter") as adapter_class:
+            adapter_class.return_value.get_catalog_entry.return_value = MagicMock()
             response = client_with_mocks.post("/legal-texts/gesetze-im-internet/nonexistent")
-
             assert response.status_code == 404
             assert "No legal texts found" in response.json()["detail"]
 
-    def test_import_legal_text_handles_embedding_error(self, client_with_mocks, mock_repository, mock_embedding_service):
+    def test_import_legal_text_handles_embedding_error(self, client_with_mocks, mock_import_service):
         """Test import handles embedding generation errors"""
-        legal_texts = [
-            LegalText(text="Text 1", code="bgb", section="§ 1", sub_section="1")
-        ]
-        mock_embedding_service.generate_embeddings.side_effect = Exception("Ollama not available")
-
-        with patch('app.routers.legal_texts.GesetzteImInternetCatalog') as mock_catalog_class, \
-             patch('app.routers.legal_texts.GesetzteImInternetScraper') as mock_scraper_class:
-
-            # Mock catalog validation to pass
-            mock_catalog = MagicMock()
-            mock_catalog.is_valid_code.return_value = True
-            mock_catalog_class.return_value = mock_catalog
-
-            # Mock scraper
-            mock_scraper = MagicMock()
-            mock_scraper.scrape.return_value = legal_texts
-            mock_scraper_class.return_value = mock_scraper
-
+        mock_import_service.import_document.side_effect = Exception("Ollama not available")
+        with patch("app.routers.legal_texts.GesetzeImInternetAdapter") as adapter_class:
+            adapter_class.return_value.get_catalog_entry.return_value = MagicMock()
             response = client_with_mocks.post("/legal-texts/gesetze-im-internet/bgb")
-
             assert response.status_code == 500
-            assert "Error generating embeddings" in response.json()["detail"]
-            assert "Make sure Ollama is running" in response.json()["detail"]
+            assert "Ollama not available" in response.json()["detail"]
 
-    def test_import_invalid_code(self, client_with_mocks, mock_repository, mock_embedding_service):
+    def test_import_invalid_code(self, client_with_mocks):
         """Test import rejects invalid code from catalog"""
-        with patch('app.routers.legal_texts.GesetzteImInternetCatalog') as mock_catalog_class:
-            mock_catalog = MagicMock()
-            mock_catalog.is_valid_code.return_value = False
-            mock_catalog_class.return_value = mock_catalog
-
+        with patch("app.routers.legal_texts.GesetzeImInternetAdapter") as adapter_class:
+            adapter_class.return_value.get_catalog_entry.side_effect = SourceDocumentNotFound()
             response = client_with_mocks.post("/legal-texts/gesetze-im-internet/invalid_code")
-
             assert response.status_code == 400
             assert "Invalid legal code" in response.json()["detail"]
             assert "/catalog endpoint" in response.json()["detail"]
 
-    def test_import_catalog_validation_fails_gracefully(self, client_with_mocks, mock_repository, mock_embedding_service):
+    def test_import_catalog_validation_fails_gracefully(self, client_with_mocks, mock_import_service):
         """Test import proceeds if catalog validation fails"""
         from app.scrapers import CatalogFetchError
-
-        legal_texts = [
-            LegalText(text="Text 1", code="bgb", section="§ 1", sub_section="1"),
-        ]
-        mock_embedding_service.generate_embeddings.return_value = [[0.1] * 2560]
-        mock_repository.add_legal_texts_batch.return_value = []
-
-        with patch('app.routers.legal_texts.GesetzteImInternetCatalog') as mock_catalog_class, \
-             patch('app.routers.legal_texts.GesetzteImInternetScraper') as mock_scraper_class:
-
-            # Catalog validation fails
-            mock_catalog = MagicMock()
-            mock_catalog.is_valid_code.side_effect = CatalogFetchError("Network error")
-            mock_catalog_class.return_value = mock_catalog
-
-            # But scraper succeeds
-            mock_scraper = MagicMock()
-            mock_scraper.scrape.return_value = legal_texts
-            mock_scraper_class.return_value = mock_scraper
-
+        mock_import_service.import_document.return_value = LegalImportResult(
+            document_id="bgb", code="bgb", texts_imported=1, texts_updated=1
+        )
+        with patch("app.routers.legal_texts.GesetzeImInternetAdapter") as adapter_class:
+            adapter_class.return_value.get_catalog_entry.side_effect = CatalogFetchError(
+                "Network error"
+            )
             response = client_with_mocks.post("/legal-texts/gesetze-im-internet/bgb")
-
-            # Should succeed despite catalog validation failure
             assert response.status_code == 200
             assert response.json()["texts_imported"] == 1
+            fallback_entry = mock_import_service.import_document.call_args.kwargs[
+                "catalog_entry"
+            ]
+            assert fallback_entry.document_id == "bgb"
 
 
 class TestGetImportableCatalog:
