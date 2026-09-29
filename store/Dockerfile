@@ -27,6 +27,8 @@ COPY ./store/app ./app
 # Copy alembic for database migrations
 COPY ./store/alembic ./alembic
 COPY ./store/alembic.ini .
+COPY ./store/entrypoint.sh /usr/local/bin/store-api-entrypoint
+RUN chmod +x /usr/local/bin/store-api-entrypoint
 
 # Create data directory for documents
 RUN mkdir -p /app/data
@@ -34,6 +36,5 @@ RUN mkdir -p /app/data
 # Expose port
 EXPOSE 8000
 
-# Run the application
+ENTRYPOINT ["store-api-entrypoint"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
